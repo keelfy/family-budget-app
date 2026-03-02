@@ -4,7 +4,7 @@ FROM oven/bun:1 AS base
 FROM base AS deps
 WORKDIR /app
 
-COPY package.json bun.lockb ./
+COPY bun.lock ./bun.lock ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
 
