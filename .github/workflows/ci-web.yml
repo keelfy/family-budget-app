@@ -3,7 +3,7 @@ name: CI Web Docker
 on:
   push:
     branches:
-      - main
+      - master
     tags:
       - "v*"
     paths:
