@@ -10,15 +10,15 @@ on:
       - "apps/web/**"
       - "packages/shared/**"
       - "package.json"
+      - "bun.lock"
       - "turbo.json"
-      - "bun.lockb"
   pull_request:
     paths:
       - "apps/web/**"
       - "packages/shared/**"
       - "package.json"
       - "turbo.json"
-      - "bun.lockb"
+      - "bun.lock"
 
 jobs:
   docker:
