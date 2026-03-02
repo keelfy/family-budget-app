@@ -34,6 +34,8 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # The standalone output includes the workspace structure
 # Copy the standalone directory contents to /app
 COPY --from=builder /app/apps/web/.next/standalone ./
+# Bun can resolve Next from /app/node_modules/next in some standalone layouts
+COPY --from=builder /app/node_modules/next ./node_modules/next
 # The static files are not copied to standalone by default, so we copy them manually
 COPY --from=builder /app/apps/web/.next/static ./.next/static
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
