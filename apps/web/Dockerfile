@@ -37,7 +37,7 @@ COPY --from=builder /app/apps/web/.next/standalone ./
 # The static files are not copied to standalone by default, so we copy them manually
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 # Copy public directory for static assets
-COPY --from=builder /app/apps/web/public ./apps/web/public
+# COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 ENV PORT 3000
