@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     app_name: str = "Nomad Ledger API"
     debug: bool = False
 
+    # CORS
+    cors_origins: str = "http://localhost:3000"
+
     # Exchange Rate API
     frankfurter_api_url: str = "https://api.frankfurter.app"
 
