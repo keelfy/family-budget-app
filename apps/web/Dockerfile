@@ -8,7 +8,7 @@ COPY bun.lock ./bun.lock ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./package.json
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # ---- builder ----
 FROM base AS builder
