@@ -25,7 +25,7 @@ COPY apps/web ./apps/web
 RUN cd apps/web && bun run build
 
 # Runner stage
-FROM base AS runner
+FROM node:20-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
@@ -34,18 +34,13 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # The standalone output includes the workspace structure
 # Copy the standalone directory contents to /app
 COPY --from=builder /app/apps/web/.next/standalone ./
-# Bun can resolve Next from /app/node_modules/next in some standalone layouts
-COPY --from=builder /app/node_modules/next ./node_modules/next
 # The static files are not copied to standalone by default, so we copy them manually
 COPY --from=builder /app/apps/web/.next/static ./.next/static
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-# Copy public directory for static assets
-# COPY --from=builder /app/apps/web/public ./public
-# COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 # The entrypoint is the server.js file inside the standalone app directory
-CMD ["sh", "-c", "if [ -f apps/web/server.js ]; then exec bun apps/web/server.js; elif [ -f server.js ]; then exec bun server.js; else echo 'server.js not found in expected locations'; ls -la; exit 1; fi"]
+CMD ["sh", "-c", "if [ -f apps/web/server.js ]; then exec node apps/web/server.js; elif [ -f server.js ]; then exec node server.js; else echo 'server.js not found in expected locations'; ls -la; exit 1; fi"]
