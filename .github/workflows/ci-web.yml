@@ -9,6 +9,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/shared/**"
+      - ".github/workflows/ci-web.yml"
       - "package.json"
       - "bun.lock"
       - "turbo.json"
@@ -16,6 +17,7 @@ on:
     paths:
       - "apps/web/**"
       - "packages/shared/**"
+      - ".github/workflows/ci-web.yml"
       - "package.json"
       - "turbo.json"
       - "bun.lock"
