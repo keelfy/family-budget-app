@@ -161,9 +161,16 @@ export default function TransactionsPage() {
                     </TableCell>
                     <TableCell>{transaction.category_name}</TableCell>
                     <TableCell>{transaction.account_name}</TableCell>
-                    <TableCell className={`text-right font-medium ${color}`}>
-                      {transaction.category_type === 'income' ? '+' : transaction.category_type === 'transfer' ? '' : '-'}
-                      {formatCurrency(Math.abs(transaction.amount_base_eur))}
+                    <TableCell className={`text-right ${color}`}>
+                      <div className="font-medium">
+                        {transaction.category_type === 'income' ? '+' : transaction.category_type === 'transfer' ? '' : '-'}
+                        {formatCurrency(Math.abs(transaction.amount_original), transaction.currency_original)}
+                      </div>
+                      {transaction.currency_original !== 'EUR' && (
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(Math.abs(transaction.amount_base_eur))}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

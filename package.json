@@ -12,7 +12,7 @@
     "lint": "turbo lint",
     "type-check": "turbo type-check",
     "dev:web": "turbo dev --filter=web",
-    "dev:api": "cd apps/api && uv run app.main:app --reload --port 8000",
+    "dev:api": "cd apps/api && uv run fastapi dev",
     "db:migrate": "cd supabase && supabase db push",
     "db:reset": "cd supabase && supabase db reset"
   },
