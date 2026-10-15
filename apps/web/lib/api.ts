@@ -128,7 +128,22 @@ export const transactionsApi = {
   update: (id: string, data: UpdateTransactionInput) => api<Transaction>(`/api/v1/transactions/${id}`, { method: 'PATCH', body: data }),
   delete: (id: string) => api<void>(`/api/v1/transactions/${id}`, { method: 'DELETE' }),
   transfer: (data: TransferInput) => api<Transaction>('/api/v1/transactions/transfer', { method: 'POST', body: data }),
+  importPreview: (data: StatementPreviewInput) =>
+    api<StatementRowPreview[]>('/api/v1/transactions/import-preview', { method: 'POST', body: data }),
 };
+
+export interface StatementPreviewInput {
+  account_id: string;
+  /** Which export this is: the debit list holds expenses, the credit list income. */
+  type: 'income' | 'expense';
+  rows: { transaction_date: string; amount: number; description: string }[];
+}
+
+/** One entry per submitted statement row, in the same order. */
+export interface StatementRowPreview {
+  category_id: string | null;
+  duplicate: boolean;
+}
 
 // Receipt API
 export interface ReceiptPreview {

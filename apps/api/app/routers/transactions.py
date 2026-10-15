@@ -7,12 +7,15 @@ from psycopg import AsyncConnection
 from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.models import (
+    StatementPreviewRequest,
+    StatementRowPreview,
     Transaction,
     TransactionCreate,
     TransactionItemIn,
     TransactionUpdate,
     TransferCreate,
 )
+from app.services.categorizer import categorize_items
 from app.services.currency_service import convert_amount, save_exchange_rate
 
 router = APIRouter()
@@ -147,6 +150,93 @@ async def list_transactions(
     )
 
     return [Transaction(**t) for t in rows]
+
+
+@router.post("/import-preview", response_model=List[StatementRowPreview])
+async def preview_statement_import(
+    body: StatementPreviewRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncConnection = Depends(get_db),
+):
+    """Suggest a category and flag duplicates for parsed bank statement rows.
+
+    Nothing is saved: the client reviews the rows and creates the transactions.
+    """
+    if not body.rows:
+        return []
+
+    account = await fetch_one(
+        db,
+        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
+        [body.account_id, current_user.id],
+    )
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
+        )
+
+    keys = [row.description.lower() for row in body.rows]
+
+    # Same merchant as a previous transaction: reuse its latest category.
+    history = await fetch_all(
+        db,
+        "SELECT DISTINCT ON (lower(t.merchant)) lower(t.merchant) AS merchant, "
+        "t.category_id FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.user_id = %s AND c.type = %s AND lower(t.merchant) = ANY(%s) "
+        "ORDER BY lower(t.merchant), t.transaction_date DESC, t.created_at DESC",
+        [current_user.id, body.type, list(set(keys))],
+    )
+    known = {h["merchant"]: h["category_id"] for h in history}
+
+    # Everything else goes to the LLM in one call.
+    unknown = sorted({k for k in keys if k not in known})
+    if unknown:
+        categories = await fetch_all(
+            db,
+            "SELECT id, name FROM categories "
+            "WHERE type = %s AND (user_id IS NULL OR user_id = %s) "
+            "ORDER BY sort_order, name",
+            [body.type, current_user.id],
+        )
+        picks = await categorize_items(
+            "bank card statement", unknown, [c["name"] for c in categories]
+        )
+        for name, pick in zip(unknown, picks):
+            if pick is not None:
+                known[name] = categories[pick]["id"]
+
+    # Each stored transaction can account for one statement row only, so three
+    # identical ATM withdrawals on one day stay three rows.
+    existing = await fetch_all(
+        db,
+        "SELECT t.transaction_date, abs(t.amount_original) AS amount, "
+        "lower(t.merchant) AS merchant, COUNT(*)::int AS n "
+        "FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.user_id = %s AND t.account_id = %s AND c.type = %s "
+        "AND t.transaction_date BETWEEN %s AND %s GROUP BY 1, 2, 3",
+        [
+            current_user.id,
+            body.account_id,
+            body.type,
+            min(r.transaction_date for r in body.rows),
+            max(r.transaction_date for r in body.rows),
+        ],
+    )
+    remaining = {
+        (e["transaction_date"], round(e["amount"], 2), e["merchant"]): e["n"]
+        for e in existing
+    }
+
+    previews = []
+    for row, key in zip(body.rows, keys):
+        slot = (row.transaction_date, round(row.amount, 2), key)
+        duplicate = remaining.get(slot, 0) > 0
+        if duplicate:
+            remaining[slot] -= 1
+        previews.append(
+            StatementRowPreview(category_id=known.get(key), duplicate=duplicate)
+        )
+    return previews
 
 
 @router.get("/{transaction_id}", response_model=Transaction)

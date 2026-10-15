@@ -86,3 +86,23 @@ class TransferCreate(BaseModel):
     to_amount: Optional[float] = Field(None, gt=0)
     transaction_date: date
     description: Optional[str] = None
+
+
+class StatementRowIn(BaseModel):
+    transaction_date: date
+    amount: float = Field(..., gt=0)
+    description: str = Field(..., min_length=1, max_length=200)
+
+
+class StatementPreviewRequest(BaseModel):
+    account_id: str
+    # Debit export -> expense, credit export -> income.
+    type: Literal["income", "expense"]
+    rows: List[StatementRowIn] = Field(..., max_length=500)
+
+
+class StatementRowPreview(BaseModel):
+    # Category used for this merchant before, else an LLM guess; None when unknown.
+    category_id: Optional[str] = None
+    # Already imported (same date, amount and merchant on this account).
+    duplicate: bool = False

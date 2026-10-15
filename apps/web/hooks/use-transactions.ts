@@ -5,6 +5,7 @@ import {
   CreateTransactionInput,
   UpdateTransactionInput,
   TransferInput,
+  StatementPreviewInput,
 } from '@/lib/api';
 
 export function useTransactions(filters?: TransactionFilters) {
@@ -74,5 +75,11 @@ export function useTransfer() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
     },
+  });
+}
+
+export function useStatementImportPreview() {
+  return useMutation({
+    mutationFn: (data: StatementPreviewInput) => transactionsApi.importPreview(data),
   });
 }

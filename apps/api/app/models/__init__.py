@@ -10,6 +10,8 @@ from app.models.category import (
     CategoryUpdate,
 )
 from app.models.transaction import (
+    StatementPreviewRequest,
+    StatementRowPreview,
     Transaction,
     TransactionCreate,
     TransactionItem,
@@ -72,6 +74,8 @@ __all__ = [
     "Category",
     "CategoryCreate",
     "CategoryUpdate",
+    "StatementPreviewRequest",
+    "StatementRowPreview",
     "Transaction",
     "TransactionCreate",
     "TransactionItem",

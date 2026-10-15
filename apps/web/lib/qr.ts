@@ -44,13 +44,18 @@ async function decodeQrFromImage(file: File, jsQR: JsQR): Promise<string | null>
   }
 }
 
-async function decodeQrFromPdf(file: File, jsQR: JsQR): Promise<string | null> {
+/** pdf.js with its worker configured; loaded on demand like jsQR. */
+export async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     'pdfjs-dist/build/pdf.worker.min.js',
     import.meta.url
   ).toString();
+  return pdfjs;
+}
 
+async function decodeQrFromPdf(file: File, jsQR: JsQR): Promise<string | null> {
+  const pdfjs = await loadPdfjs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ArrowUpRight, ArrowDownLeft, ArrowRight, Filter } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, ArrowRight, Filter, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { StatementImportDialog } from '@/components/forms/statement-import-dialog';
 import { useTransactions } from '@/hooks/use-transactions';
 import { useAccounts } from '@/hooks/use-accounts';
 import { formatCurrency, formatDate, getCurrentPeriod } from '@/lib/utils';
@@ -31,6 +32,7 @@ export default function TransactionsPage() {
   const router = useRouter();
   const [period, setPeriod] = useState(getCurrentPeriod());
   const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: transactions, isLoading } = useTransactions({
     period,
@@ -64,6 +66,10 @@ export default function TransactionsPage() {
   return (
     <div>
       <PageHeader title="Transactions" description="View and manage your transactions">
+        <Button variant="outline" onClick={() => setImportOpen(true)}>
+          <Upload className="mr-2 h-4 w-4" />
+          Import statement
+        </Button>
         <Button onClick={() => router.push('/dashboard/transactions/new')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Transaction
@@ -187,6 +193,8 @@ export default function TransactionsPage() {
           </TableBody>
         </Table>
       </Card>
+
+      <StatementImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }
