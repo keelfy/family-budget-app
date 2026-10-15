@@ -1,14 +1,19 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useParseReceipt } from '@/hooks/use-receipts';
-import { decodeQrFromImage } from '@/lib/qr';
+import { decodeQrFromFile, isPdf } from '@/lib/qr';
 import type { ReceiptPreview } from '@/lib/api';
 
-/** Pick a photo of a Serbian fiscal receipt's QR code and read the receipt from it. */
+const SUF_URL = /^https:\/\/suf\.purs\.gov\.rs\/\S+$/;
+
+/**
+ * Read a Serbian fiscal receipt from a photo or PDF of its QR code, picked from disk
+ * or pasted from the clipboard (an image, a PDF file, or the receipt link itself).
+ */
 export function ReceiptScanButton({ onParsed }: { onParsed: (receipt: ReceiptPreview) => void }) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -19,12 +24,12 @@ export function ReceiptScanButton({ onParsed }: { onParsed: (receipt: ReceiptPre
   const fail = (description: string) =>
     toast({ variant: 'destructive', title: 'Could not read receipt', description });
 
-  const handleFile = async (file: File) => {
+  const handleSource = async (readUrl: () => Promise<string | null>) => {
     setReading(true);
     try {
-      const url = await decodeQrFromImage(file);
+      const url = await readUrl();
       if (!url) {
-        fail('No QR code found in the photo. Make sure the whole code is in focus.');
+        fail('No QR code found. Make sure the whole code is visible and in focus.');
         return;
       }
       onParsed(await parseReceipt.mutateAsync(url));
@@ -36,12 +41,40 @@ export function ReceiptScanButton({ onParsed }: { onParsed: (receipt: ReceiptPre
     }
   };
 
+  const handleFile = (file: File) => handleSource(() => decodeQrFromFile(file));
+
+  // The handler is re-bound every render so it always sees the current busy flag.
+  const onPaste = (event: ClipboardEvent) => {
+    if (busy || !event.clipboardData) return;
+    const file = Array.from(event.clipboardData.files).find(
+      (f) => f.type.startsWith('image/') || isPdf(f)
+    );
+    if (file) {
+      event.preventDefault();
+      void handleFile(file);
+      return;
+    }
+    const text = event.clipboardData.getData('text/plain').trim();
+    if (SUF_URL.test(text)) {
+      event.preventDefault();
+      void handleSource(async () => text);
+    }
+  };
+  const pasteRef = useRef(onPaste);
+  pasteRef.current = onPaste;
+
+  useEffect(() => {
+    const listener = (event: ClipboardEvent) => pasteRef.current(event);
+    document.addEventListener('paste', listener);
+    return () => document.removeEventListener('paste', listener);
+  }, []);
+
   return (
     <>
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,application/pdf,.pdf"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -63,6 +96,9 @@ export function ReceiptScanButton({ onParsed }: { onParsed: (receipt: ReceiptPre
         )}
         {busy ? 'Reading receipt...' : 'Scan fiscal receipt QR'}
       </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        Photo or PDF — or paste it with Ctrl+V
+      </p>
     </>
   );
 }
