@@ -47,10 +47,7 @@ async function decodeQrFromImage(file: File, jsQR: JsQR): Promise<string | null>
 /** pdf.js with its worker configured; loaded on demand like jsQR. */
 export async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.js',
-    import.meta.url
-  ).toString();
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   return pdfjs;
 }
 
@@ -71,9 +68,7 @@ async function decodeQrFromPdf(file: File, jsQR: JsQR): Promise<string | null> {
       });
       canvas.width = Math.round(viewport.width);
       canvas.height = Math.round(viewport.height);
-      // Transparent areas would read as black; the code needs a white background.
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // pdf.js paints the white page background itself; do not pre-fill (it stalls rendering).
       await page.render({ canvasContext: ctx, viewport }).promise;
       const found = scan(jsQR, ctx, canvas.width, canvas.height);
       if (found) return found;
