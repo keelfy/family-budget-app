@@ -161,7 +161,7 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="amount"
@@ -258,7 +258,7 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
           )}
         />
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>

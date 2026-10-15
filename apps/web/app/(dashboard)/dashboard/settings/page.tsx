@@ -111,18 +111,18 @@ export default function SettingsPage() {
           <CardContent className="space-y-4">
             <ul className="divide-y rounded-md border">
               {members?.map((member) => (
-                <li key={member.id} className="flex items-center justify-between px-4 py-3">
+                <li key={member.id} className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center px-4 py-3">
                   <span className="font-medium">
                     {member.display_name || member.email}
                     {member.id === user?.id && (
                       <span className="ml-2 text-sm font-normal text-muted-foreground">(you)</span>
                     )}
                   </span>
-                  <span className="text-sm text-muted-foreground">{member.email}</span>
+                  <span className="break-all text-sm text-muted-foreground">{member.email}</span>
                 </li>
               ))}
             </ul>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <p className="font-medium">Invite a member</p>
                 <p className="text-sm text-muted-foreground">
@@ -182,7 +182,7 @@ export default function SettingsPage() {
               </Button>
             </div>
             <Separator />
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <p className="font-medium">Sign Out</p>
                 <p className="text-sm text-muted-foreground">
@@ -210,7 +210,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-3">
                 Choose between light, dark, or system theme
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { value: 'light', label: 'Light', icon: Sun },
                   { value: 'dark', label: 'Dark', icon: Moon },
@@ -230,7 +230,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <Separator />
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <p className="font-medium">Base Currency</p>
                 <p className="text-sm text-muted-foreground">
@@ -240,7 +240,7 @@ export default function SettingsPage() {
               <span className="font-mono">EUR</span>
             </div>
             <Separator />
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <p className="font-medium">Default Monthly Allowance</p>
                 <p className="text-sm text-muted-foreground">

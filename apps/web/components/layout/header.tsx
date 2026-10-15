@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MobileNavigation } from './sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export function Header() {
@@ -34,20 +35,21 @@ export function Header() {
     : user?.email?.[0]?.toUpperCase() || 'U';
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-6">
-      <div className="flex items-center gap-4">
+    <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-card px-3 sm:px-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+        <MobileNavigation />
         <Button variant="default" size="sm" onClick={() => router.push('/dashboard/transactions/new')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Transaction
         </Button>
       </div>
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+        <Button variant="ghost" size="icon" aria-label="Notifications">
           <Bell className="h-5 w-5" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+            <Button variant="ghost" className="relative h-10 w-10 rounded-full" aria-label="Account menu">
               <Avatar>
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>

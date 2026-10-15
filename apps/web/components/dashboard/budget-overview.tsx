@@ -47,7 +47,7 @@ export function BudgetOverview() {
 
         return (
           <div key={budget.id} className="space-y-2">
-            <div className="flex justify-between text-sm">
+            <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
               <span className="font-medium">{budget.category_name}</span>
               <span className={isOverBudget ? 'text-destructive' : 'text-muted-foreground'}>
                 {formatCurrency(budget.spent_amount)} / {formatCurrency(budget.amount_planned)}

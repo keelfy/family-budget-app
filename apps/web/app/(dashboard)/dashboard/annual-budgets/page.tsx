@@ -139,7 +139,7 @@ export default function AnnualBudgetsPage() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-muted-foreground mb-4">No annual budgets set for {year}</p>
-            <Button onClick={() => setDialogOpen(true)}>
+            <Button className="h-auto min-h-11 max-w-full whitespace-normal" onClick={() => setDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Create your first annual budget
             </Button>
@@ -155,7 +155,7 @@ export default function AnnualBudgetsPage() {
             return (
               <Card key={budget.id}>
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <h3 className="font-semibold">{budget.name}</h3>
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium ${isOverBudget ? 'text-destructive' : 'text-muted-foreground'}`}>
@@ -194,7 +194,7 @@ export default function AnnualBudgetsPage() {
                         : 'bg-success'
                     }
                   />
-                  <div className="flex justify-between text-sm">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
                     <span className="text-muted-foreground">
                       {formatCurrency(budget.spent_amount)} spent
                     </span>

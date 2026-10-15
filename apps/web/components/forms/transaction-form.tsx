@@ -336,7 +336,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
           )}
         />
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField
             control={form.control}
             name="amount_original"
@@ -472,7 +472,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
                   <div className="space-y-1 leading-none">
                     <FormLabel>Allowance</FormLabel>
                     <FormDescription>
-                      Count this against a family member's spending allowance
+                      Count this against a family member&apos;s spending allowance
                     </FormDescription>
                   </div>
                 </div>
@@ -565,7 +565,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
           }}
         />
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>

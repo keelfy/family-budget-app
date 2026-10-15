@@ -138,7 +138,7 @@ export default function AllowancesPage() {
             <li>Any family member can change a monthly spending limit</li>
             <li>Unspent amounts carry over to the next month</li>
             <li>Assign transactions to an allowance to track against its limit</li>
-            <li>Run "Month Rollover" to create or re-calculate carry-overs for the current month</li>
+            <li>Run &quot;Month Rollover&quot; to create or re-calculate carry-overs for the current month</li>
           </ul>
         </CardContent>
       </Card>
@@ -185,7 +185,7 @@ export default function AllowancesPage() {
             return (
               <Card key={balance.id}>
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <h3 className="text-lg font-semibold">
                       {balance.allowance_name || 'Allowance'}
                       {balance.user_id === currentUser?.id && (
@@ -200,7 +200,7 @@ export default function AllowancesPage() {
                       </Badge>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-8 sm:w-8">
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

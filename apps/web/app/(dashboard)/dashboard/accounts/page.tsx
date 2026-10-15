@@ -87,15 +87,15 @@ export default function AccountsPage() {
             <Card key={account.id} className={!account.is_active ? 'opacity-50' : ''}>
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div
-                      className={`h-10 w-10 rounded-full ${accountTypeColors[account.type]} flex items-center justify-center`}
+                      className={`h-10 w-10 shrink-0 rounded-full ${accountTypeColors[account.type]} flex items-center justify-center`}
                     >
                       <Wallet className="h-5 w-5 text-white" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold">{account.name}</h3>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <h3 className="break-words font-semibold">{account.name}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="secondary" className="text-xs">
                           {account.type}
                         </Badge>

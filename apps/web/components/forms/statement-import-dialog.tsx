@@ -165,11 +165,11 @@ export function StatementImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Import bank statement</DialogTitle>
           <DialogDescription>
-            PDF of the Raiffeisen online-banking "Transactions by file" list. Debit rows are
+            PDF of the Raiffeisen online-banking &quot;Transactions by file&quot; list. Debit rows are
             imported as expenses, credit rows as income; the statement currency must match the
             account.
           </DialogDescription>
@@ -221,7 +221,7 @@ export function StatementImportDialog({
 
         {rows.length > 0 && (
           <>
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8" />
@@ -290,7 +290,7 @@ export function StatementImportDialog({
                 ))}
               </TableBody>
             </Table>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-muted-foreground">
                 {missingCategory > 0
                   ? `${missingCategory} selected without a category`

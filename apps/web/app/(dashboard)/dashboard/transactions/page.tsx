@@ -92,7 +92,7 @@ export default function TransactionsPage() {
             <span className="text-sm font-medium">Filters:</span>
           </div>
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-full sm:w-40">
               <SelectValue placeholder="Select period" />
             </SelectTrigger>
             <SelectContent>
@@ -107,7 +107,7 @@ export default function TransactionsPage() {
             </SelectContent>
           </Select>
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full sm:w-56">
               <SelectValue placeholder="All accounts" />
             </SelectTrigger>
             <SelectContent>
@@ -122,7 +122,7 @@ export default function TransactionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <div className="relative w-56">
+          <div className="relative w-full sm:w-56">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
@@ -136,7 +136,7 @@ export default function TransactionsPage() {
       </Card>
 
       <Card>
-        <Table>
+        <Table className="min-w-[640px]">
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>
@@ -176,7 +176,7 @@ export default function TransactionsPage() {
                   >
                     <TableCell>{formatDate(transaction.transaction_date)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Icon className={`h-4 w-4 ${color}`} />
                         <span>{transaction.description || transaction.category_name}</span>
                         {transaction.merchant && (

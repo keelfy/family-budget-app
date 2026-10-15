@@ -49,7 +49,7 @@ export function AllowanceStatus() {
 
         return (
           <div key={balance.id} className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">{balance.allowance_name}</span>
               <Badge variant={remaining > 0 ? 'secondary' : 'destructive'}>
                 {remaining > 0 ? formatCurrency(remaining) + ' left' : 'Over limit'}
@@ -72,7 +72,7 @@ export function AllowanceStatus() {
                   : 'bg-primary'
               }
             />
-            <div className="flex gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
               <span>Monthly: {formatCurrency(balance.monthly_limit)}</span>
               {balance.carry_over_from_previous > 0 && (
                 <span>+ Carried: {formatCurrency(balance.carry_over_from_previous)}</span>

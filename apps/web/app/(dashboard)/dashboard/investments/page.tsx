@@ -67,7 +67,7 @@ export default function InvestmentsPage() {
         </div>
       </PageHeader>
 
-      <div className="grid gap-6 md:grid-cols-4 mb-6">
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
@@ -113,7 +113,7 @@ export default function InvestmentsPage() {
       </div>
 
       <Card>
-        <Table>
+        <Table className="min-w-[800px]">
           <TableHeader>
             <TableRow>
               <TableHead>Asset</TableHead>

@@ -116,7 +116,7 @@ const ItemRow = memo(function ItemRow({
       <select
         aria-label={`Item ${index + 1} category`}
         className={cn(
-          'h-8 w-full rounded-md border border-input bg-background px-2 text-xs',
+          'h-11 w-full rounded-md sm:h-8 border border-input bg-background px-2 text-base sm:text-xs',
           known ? 'text-foreground' : 'text-muted-foreground'
         )}
         {...register(`items.${index}.category_id`)}
@@ -199,7 +199,7 @@ export function TransactionItemsEditor({
             ))}
           </div>
           {firstError && <p className="text-sm font-medium text-destructive">{firstError}</p>}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Button type="button" variant="outline" size="sm" onClick={addItem}>
               <Plus className="mr-2 h-4 w-4" />
               Add item

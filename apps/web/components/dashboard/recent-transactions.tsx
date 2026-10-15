@@ -50,18 +50,18 @@ export function RecentTransactions() {
           <Link
             key={transaction.id}
             href={`/dashboard/transactions/${transaction.id}`}
-            className="flex items-center gap-4 rounded-lg p-2 transition-colors hover:bg-muted"
+            className="flex items-center gap-2 rounded-lg sm:gap-4 p-2 transition-colors hover:bg-muted"
           >
-            <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-muted ${color}`}>
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted ${color}`}>
               <Icon className="h-5 w-5" />
             </div>
-            <div className="flex-1">
-              <p className="font-medium">{transaction.description || transaction.category_name}</p>
-              <p className="text-sm text-muted-foreground">
+            <div className="min-w-0 flex-1">
+              <p className="break-words font-medium">{transaction.description || transaction.category_name}</p>
+              <p className="break-words text-xs text-muted-foreground sm:text-sm">
                 {transaction.account_name} - {formatDate(transaction.transaction_date)}
               </p>
             </div>
-            <div className={`font-medium ${color}`}>
+            <div className={`shrink-0 text-sm font-medium sm:text-base ${color}`}>
               {isIncome ? '+' : isTransfer ? '' : '-'}
               {formatCurrency(Math.abs(transaction.amount_base_eur))}
             </div>

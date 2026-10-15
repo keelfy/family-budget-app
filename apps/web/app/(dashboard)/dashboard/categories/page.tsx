@@ -79,16 +79,16 @@ export default function CategoriesPage() {
                     {customCategories.map((category) => (
                       <Card key={category.id}>
                         <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-3">
                               <div
-                                className="h-8 w-8 rounded-full flex items-center justify-center"
+                                className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center"
                                 style={{ backgroundColor: category.color || '#6b7280' }}
                               >
                                 <Tags className="h-4 w-4 text-white" />
                               </div>
                               <div>
-                                <p className="font-medium">{category.name}</p>
+                                <p className="break-words font-medium">{category.name}</p>
                                 {category.is_allowance && (
                                   <Badge variant="outline" className="text-xs">Allowance</Badge>
                                 )}
@@ -124,15 +124,15 @@ export default function CategoriesPage() {
                   {systemCategories.map((category) => (
                     <Card key={category.id} className="opacity-75">
                       <CardContent className="p-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
                           <div
-                            className="h-8 w-8 rounded-full flex items-center justify-center"
+                            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center"
                             style={{ backgroundColor: category.color || '#6b7280' }}
                           >
                             <Tags className="h-4 w-4 text-white" />
                           </div>
                           <div>
-                            <p className="font-medium">{category.name}</p>
+                            <p className="break-words font-medium">{category.name}</p>
                             <p className="text-xs text-muted-foreground">System</p>
                           </div>
                         </div>

@@ -164,7 +164,7 @@ export default function BudgetsPage() {
                         : 'bg-success'
                     }
                   />
-                  <div className="flex justify-between text-sm">
+                  <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
                     <span className="text-muted-foreground">
                       {formatCurrency(budget.spent_amount)} spent
                     </span>
