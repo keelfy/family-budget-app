@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -33,19 +33,43 @@ import { useCreateTransaction, useUpdateTransaction } from '@/hooks/use-transact
 import { useToast } from '@/components/ui/use-toast';
 import { getPeriodFromDate, formatDateLocal, parseLocalDate } from '@/lib/utils';
 import { Transaction } from '@/lib/api';
+import {
+  ItemsAwareAmountInput,
+  TransactionItemsEditor,
+  sumItems,
+} from '@/components/forms/transaction-items-editor';
 
-const transactionSchema = z.object({
-  account_id: z.string().min(1, 'Account is required'),
-  category_id: z.string().min(1, 'Category is required'),
-  amount_original: z.coerce.number().min(0.01, 'Amount must be greater than 0'),
-  currency_original: z.string().min(3, 'Currency is required'),
-  transaction_date: z.date(),
-  accounting_period: z.string().optional(),
-  description: z.string().optional(),
-  notes: z.string().optional(),
-  allowance_id: z.string().nullable().default(null),
-  annual_budget_id: z.string().nullable().default(null),
-});
+const transactionSchema = z
+  .object({
+    account_id: z.string().min(1, 'Account is required'),
+    category_id: z.string().min(1, 'Category is required'),
+    // Checked in superRefine: with items the amount is derived from them.
+    amount_original: z.coerce.number().min(0),
+    currency_original: z.string().min(3, 'Currency is required'),
+    transaction_date: z.date(),
+    accounting_period: z.string().optional(),
+    description: z.string().optional(),
+    notes: z.string().optional(),
+    allowance_id: z.string().nullable().default(null),
+    annual_budget_id: z.string().nullable().default(null),
+    items: z
+      .array(
+        z.object({
+          name: z.string().trim().min(1, 'Item name is required'),
+          amount: z.coerce.number().min(0.01, 'Item amount must be greater than 0'),
+        })
+      )
+      .default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.items.length === 0 && data.amount_original < 0.01) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['amount_original'],
+        message: 'Amount must be greater than 0',
+      });
+    }
+  });
 
 type TransactionFormValues = z.infer<typeof transactionSchema>;
 
@@ -81,8 +105,10 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
       notes: '',
       allowance_id: null,
       annual_budget_id: null,
+      items: [],
     },
   });
+  const currency = useWatch({ control: form.control, name: 'currency_original' });
 
   // Populate form when editing (wait for accounts and categories to load)
   useEffect(() => {
@@ -98,6 +124,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
         notes: transaction.notes || '',
         allowance_id: transaction.allowance_id || null,
         annual_budget_id: transaction.annual_budget_id || null,
+        items: (transaction.items ?? []).map(({ name, amount }) => ({ name, amount })),
       });
     }
   }, [transaction, accounts, categories, form]);
@@ -124,31 +151,38 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
   const incomeCategories = categories?.filter((c) => c.type === 'income') || [];
   const expenseCategories = categories?.filter((c) => c.type === 'expense') || [];
   const transferCategories = categories?.filter((c) => c.type === 'transfer') || [];
+  const categoryId = useWatch({ control: form.control, name: 'category_id' });
+  const selectedCategoryType = categories?.find((c) => c.id === categoryId)?.type;
 
   const onSubmit = async (data: TransactionFormValues) => {
     try {
       // Derive accounting_period from transaction_date if not explicitly set
       const accountingPeriod = data.accounting_period || getPeriodFromDate(data.transaction_date);
       const transactionDate = formatDateLocal(data.transaction_date);
+      const items = data.items.map(({ name, amount }) => ({ name, amount }));
+      const amount = items.length > 0 ? sumItems(items) : data.amount_original;
 
       if (isEditing && transaction) {
         await updateTransaction.mutateAsync({
           id: transaction.id,
           data: {
             category_id: data.category_id,
-            amount_original: data.amount_original,
+            amount_original: amount,
             transaction_date: transactionDate,
             accounting_period: accountingPeriod,
             description: data.description,
             notes: data.notes,
             allowance_id: data.allowance_id,
             annual_budget_id: data.annual_budget_id,
+            items,
           },
         });
         toast({ title: 'Transaction updated successfully' });
       } else {
         await createTransaction.mutateAsync({
           ...data,
+          amount_original: amount,
+          items: items.length > 0 ? items : undefined,
           transaction_date: transactionDate,
           accounting_period: accountingPeriod,
         });
@@ -265,7 +299,12 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
               <FormItem>
                 <FormLabel>Amount</FormLabel>
                 <FormControl>
-                  <Input type="number" step="0.01" min="0" {...field} />
+                  <ItemsAwareAmountInput
+                    name={field.name}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -301,6 +340,10 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
             )}
           />
         </div>
+
+        {selectedCategoryType !== 'transfer' && (
+          <TransactionItemsEditor currency={currency} />
+        )}
 
         <FormField
           control={form.control}

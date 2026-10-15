@@ -6,7 +6,13 @@ from psycopg import AsyncConnection
 
 from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.models import Transaction, TransactionCreate, TransactionUpdate, TransferCreate
+from app.models import (
+    Transaction,
+    TransactionCreate,
+    TransactionItemIn,
+    TransactionUpdate,
+    TransferCreate,
+)
 from app.services.currency_service import convert_amount, save_exchange_rate
 
 router = APIRouter()
@@ -17,7 +23,9 @@ _TRANSACTION_SELECT = """
            c.name AS category_name,
            c.type AS category_type,
            al.name AS allowance_name,
-           ab.name AS annual_budget_name
+           ab.name AS annual_budget_name,
+           (SELECT COUNT(*) FROM transaction_items ti
+            WHERE ti.transaction_id = t.id)::int AS items_count
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     JOIN categories c ON c.id = t.category_id
@@ -29,6 +37,45 @@ _TRANSACTION_SELECT = """
 def get_accounting_period(transaction_date: date) -> str:
     """Get accounting period from date (YYYY-MM format)."""
     return transaction_date.strftime("%Y-%m")
+
+
+def _items_total(items: List[TransactionItemIn]) -> float:
+    return round(sum(item.amount for item in items), 2)
+
+
+def _check_items_total(items: List[TransactionItemIn], amount: float) -> None:
+    if abs(_items_total(items) - abs(amount)) > 0.005:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sum of items must equal the transaction amount",
+        )
+
+
+def _reject_transfer_items(category_type: str) -> None:
+    if category_type == "transfer":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transfers cannot have items",
+        )
+
+
+async def _replace_items(
+    db: AsyncConnection, transaction_id: str, items: List[TransactionItemIn]
+) -> None:
+    await execute(
+        db, "DELETE FROM transaction_items WHERE transaction_id = %s", [transaction_id]
+    )
+    for position, item in enumerate(items):
+        await insert(
+            db,
+            "transaction_items",
+            {
+                "transaction_id": transaction_id,
+                "name": item.name,
+                "amount": item.amount,
+                "position": position,
+            },
+        )
 
 
 @router.get("", response_model=List[Transaction])
@@ -92,7 +139,16 @@ async def get_transaction(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
 
-    return Transaction(**row)
+    items = []
+    if row["items_count"]:
+        items = await fetch_all(
+            db,
+            "SELECT id, name, amount, position FROM transaction_items "
+            "WHERE transaction_id = %s ORDER BY position",
+            [transaction_id],
+        )
+
+    return Transaction(**{**row, "items": items})
 
 
 @router.post("", response_model=Transaction, status_code=status.HTTP_201_CREATED)
@@ -148,6 +204,10 @@ async def create_transaction(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
 
+    if transaction.items:
+        _reject_transfer_items(category["type"])
+        _check_items_total(transaction.items, transaction.amount_original)
+
     # Convert to EUR
     amount_eur, rate, source = await convert_amount(
         transaction.amount_original,
@@ -163,26 +223,29 @@ async def create_transaction(
         transaction.transaction_date
     )
 
-    created = await insert(
-        db,
-        "transactions",
-        {
-            "user_id": current_user.id,
-            "account_id": transaction.account_id,
-            "category_id": transaction.category_id,
-            "amount_original": transaction.amount_original,
-            "currency_original": transaction.currency_original,
-            "amount_base_eur": amount_eur,
-            "exchange_rate": rate,
-            "exchange_rate_source": source,
-            "transaction_date": transaction.transaction_date,
-            "accounting_period": accounting_period,
-            "description": transaction.description,
-            "notes": transaction.notes,
-            "allowance_id": transaction.allowance_id,
-            "annual_budget_id": transaction.annual_budget_id,
-        },
-    )
+    async with db.transaction():
+        created = await insert(
+            db,
+            "transactions",
+            {
+                "user_id": current_user.id,
+                "account_id": transaction.account_id,
+                "category_id": transaction.category_id,
+                "amount_original": transaction.amount_original,
+                "currency_original": transaction.currency_original,
+                "amount_base_eur": amount_eur,
+                "exchange_rate": rate,
+                "exchange_rate_source": source,
+                "transaction_date": transaction.transaction_date,
+                "accounting_period": accounting_period,
+                "description": transaction.description,
+                "notes": transaction.notes,
+                "allowance_id": transaction.allowance_id,
+                "annual_budget_id": transaction.annual_budget_id,
+            },
+        )
+        if transaction.items:
+            await _replace_items(db, created["id"], transaction.items)
 
     return await get_transaction(created["id"], current_user, db)
 
@@ -236,6 +299,34 @@ async def update_transaction(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
 
+    # Receipt lines: they define the amount, so the two must stay in sync.
+    items = update_data.pop("items", None)
+    if items is not None:
+        items = [TransactionItemIn(**item) for item in items]
+    existing_items = await fetch_one(
+        db,
+        "SELECT 1 FROM transaction_items WHERE transaction_id = %s LIMIT 1",
+        [transaction_id],
+    )
+    will_have_items = bool(items) if items is not None else bool(existing_items)
+    if will_have_items:
+        category = await fetch_one(
+            db,
+            "SELECT type FROM categories WHERE id = %s",
+            [update_data.get("category_id", existing["category_id"])],
+        )
+        _reject_transfer_items(category["type"] if category else "")
+    if items:
+        if "amount_original" in update_data:
+            _check_items_total(items, update_data["amount_original"])
+        update_data["amount_original"] = _items_total(items)
+    elif items is None and existing_items and "amount_original" in update_data:
+        if abs(abs(update_data["amount_original"]) - abs(existing["amount_original"])) > 0.005:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Amount is defined by items; send the updated items list",
+            )
+
     # If amount or rate changed, recalculate EUR conversion
     if "amount_original" in update_data or "exchange_rate" in update_data:
         amount = update_data.get("amount_original", existing["amount_original"])
@@ -254,7 +345,11 @@ async def update_transaction(
         update_data["exchange_rate"] = rate
         update_data["exchange_rate_source"] = source
 
-    await update(db, "transactions", update_data, {"id": transaction_id})
+    async with db.transaction():
+        if update_data:
+            await update(db, "transactions", update_data, {"id": transaction_id})
+        if items is not None:
+            await _replace_items(db, transaction_id, items)
 
     return await get_transaction(transaction_id, current_user, db)
 

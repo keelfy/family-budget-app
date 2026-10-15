@@ -12,6 +12,8 @@ from app.models.category import (
 from app.models.transaction import (
     Transaction,
     TransactionCreate,
+    TransactionItem,
+    TransactionItemIn,
     TransactionUpdate,
     TransferCreate,
 )
@@ -64,6 +66,8 @@ __all__ = [
     "CategoryUpdate",
     "Transaction",
     "TransactionCreate",
+    "TransactionItem",
+    "TransactionItemIn",
     "TransactionUpdate",
     "TransferCreate",
     "Budget",

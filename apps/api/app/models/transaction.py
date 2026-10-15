@@ -1,9 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from datetime import datetime, date
 
 
 CategoryType = Literal["income", "expense", "transfer"]
+
+
+class TransactionItemIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    amount: float = Field(..., gt=0)
+
+
+class TransactionItem(TransactionItemIn):
+    id: str
+    position: int
 
 
 class TransactionBase(BaseModel):
@@ -21,6 +31,8 @@ class TransactionBase(BaseModel):
 
 class TransactionCreate(TransactionBase):
     exchange_rate: Optional[float] = None
+    # Receipt lines; when non-empty their sum must equal amount_original.
+    items: Optional[List[TransactionItemIn]] = None
 
 
 class TransactionUpdate(BaseModel):
@@ -33,6 +45,8 @@ class TransactionUpdate(BaseModel):
     allowance_id: Optional[str] = None
     annual_budget_id: Optional[str] = None
     exchange_rate: Optional[float] = None
+    # Omitted: keep existing lines. Provided: replace them ([] clears).
+    items: Optional[List[TransactionItemIn]] = None
 
 
 class Transaction(TransactionBase):
@@ -48,6 +62,8 @@ class Transaction(TransactionBase):
     exchange_rate_source: str
     transfer_to_account_id: Optional[str] = None
     transfer_transaction_id: Optional[str] = None
+    items_count: int = 0
+    items: List[TransactionItem] = []
     created_at: datetime
     updated_at: datetime
 

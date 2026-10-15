@@ -256,6 +256,19 @@ export interface UpdateAccountInput {
   sort_order?: number;
 }
 
+export interface TransactionItem {
+  id: string;
+  name: string;
+  amount: number;
+  position: number;
+}
+
+/** A receipt line; amounts are in the transaction's currency. */
+export interface TransactionItemInput {
+  name: string;
+  amount: number;
+}
+
 export interface Transaction {
   id: string;
   account_id: string;
@@ -278,6 +291,9 @@ export interface Transaction {
   annual_budget_id: string | null;
   annual_budget_name?: string;
   transfer_to_account_id?: string;
+  items_count: number;
+  /** Only populated by the single-transaction endpoint. */
+  items: TransactionItem[];
 }
 
 export interface TransactionFilters {
@@ -301,6 +317,7 @@ export interface CreateTransactionInput {
   allowance_id?: string | null;
   annual_budget_id?: string | null;
   exchange_rate?: number;
+  items?: TransactionItemInput[];
 }
 
 export interface UpdateTransactionInput {
@@ -313,6 +330,8 @@ export interface UpdateTransactionInput {
   allowance_id?: string | null;
   annual_budget_id?: string | null;
   exchange_rate?: number;
+  /** Omit to keep existing items; [] clears them. */
+  items?: TransactionItemInput[];
 }
 
 export interface TransferInput {

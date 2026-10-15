@@ -151,6 +151,11 @@ export default function TransactionsPage() {
                       <div className="flex items-center gap-2">
                         <Icon className={`h-4 w-4 ${color}`} />
                         <span>{transaction.description || transaction.category_name}</span>
+                        {transaction.items_count > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            {transaction.items_count} {transaction.items_count === 1 ? 'item' : 'items'}
+                          </Badge>
+                        )}
                         {transaction.allowance_name && (
                           <Badge variant="outline" className="text-xs">{transaction.allowance_name}</Badge>
                         )}
