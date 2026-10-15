@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { FileUp, Loader2 } from 'lucide-react';
 import {
   Dialog,
@@ -34,8 +34,6 @@ import { useCreateTransaction, useStatementImportPreview } from '@/hooks/use-tra
 import { readStatementPdf, type StatementRow } from '@/lib/bank-statement';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-type StatementType = 'expense' | 'income';
-
 interface ImportRow extends StatementRow {
   categoryId: string | null;
   duplicate: boolean;
@@ -61,16 +59,11 @@ export function StatementImportDialog({
   const createTransaction = useCreateTransaction();
 
   const [accountId, setAccountId] = useState('');
-  const [type, setType] = useState<StatementType>('expense');
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [reading, setReading] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const account = accounts?.find((a) => a.id === accountId);
-  const options = useMemo(
-    () => (categories ?? []).filter((c) => c.type === type),
-    [categories, type]
-  );
   const chosen = rows.filter((r) => r.selected);
   const missingCategory = chosen.filter((r) => !r.categoryId).length;
 
@@ -94,12 +87,21 @@ export function StatementImportDialog({
         });
         return;
       }
+      const foreign = parsed.find((r) => r.currency && r.currency !== account?.currency_code);
+      if (foreign) {
+        toast({
+          variant: 'destructive',
+          title: 'Currency mismatch',
+          description: `The statement is in ${foreign.currency}, the account is in ${account?.currency_code}.`,
+        });
+        return;
+      }
       const suggestions = await preview.mutateAsync({
         account_id: accountId,
-        type,
         rows: parsed.map((r) => ({
           transaction_date: r.date,
           amount: r.amount,
+          type: r.type,
           description: r.description,
         })),
       });
@@ -166,9 +168,9 @@ export function StatementImportDialog({
         <DialogHeader>
           <DialogTitle>Import bank statement</DialogTitle>
           <DialogDescription>
-            PDF printed from the Raiffeisen online-banking transactions list. The file has no
-            income/expense marker or currency: import the debit and credit lists separately;
-            every row uses the account currency.
+            PDF of the Raiffeisen online-banking "Transactions by file" list. Debit rows are
+            imported as expenses, credit rows as income; the statement currency must match the
+            account.
           </DialogDescription>
         </DialogHeader>
 
@@ -189,21 +191,6 @@ export function StatementImportDialog({
                   {a.name} ({a.currency_code})
                 </SelectItem>
               ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={type}
-            onValueChange={(next) => {
-              setType(next as StatementType);
-              setRows([]);
-            }}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="expense">Debit (expenses)</SelectItem>
-              <SelectItem value="income">Credit (income)</SelectItem>
             </SelectContent>
           </Select>
           <input
@@ -261,7 +248,10 @@ export function StatementImportDialog({
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell
+                      className={`text-right ${row.type === 'income' ? 'text-green-600' : ''}`}
+                    >
+                      {row.type === 'income' ? '+' : ''}
                       {formatCurrency(row.amount, account?.currency_code)}
                     </TableCell>
                     <TableCell>
@@ -273,11 +263,13 @@ export function StatementImportDialog({
                           <SelectValue placeholder="Category" />
                         </SelectTrigger>
                         <SelectContent>
-                          {options.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
+                          {(categories ?? [])
+                            .filter((c) => c.type === row.type)
+                            .map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </TableCell>

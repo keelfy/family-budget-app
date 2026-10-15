@@ -175,61 +175,66 @@ async def preview_statement_import(
             status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
         )
 
-    keys = [row.description.lower() for row in body.rows]
+    # Merchant keys are per direction: the same shop can appear as a payment and
+    # as a refund, and each needs a category of its own type.
+    keys = [(row.type, row.description.lower()) for row in body.rows]
+    types = sorted({t for t, _ in keys})
 
     # Same merchant as a previous transaction: reuse its latest category.
     history = await fetch_all(
         db,
-        "SELECT DISTINCT ON (lower(t.merchant)) lower(t.merchant) AS merchant, "
-        "t.category_id FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND c.type = %s AND lower(t.merchant) = ANY(%s) "
-        "ORDER BY lower(t.merchant), t.transaction_date DESC, t.created_at DESC",
-        [current_user.id, body.type, list(set(keys))],
+        "SELECT DISTINCT ON (c.type, lower(t.merchant)) c.type::text AS type, "
+        "lower(t.merchant) AS merchant, t.category_id "
+        "FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.user_id = %s AND c.type::text = ANY(%s) AND lower(t.merchant) = ANY(%s) "
+        "ORDER BY c.type, lower(t.merchant), t.transaction_date DESC, t.created_at DESC",
+        [current_user.id, types, list({m for _, m in keys})],
     )
-    known = {h["merchant"]: h["category_id"] for h in history}
+    known = {(h["type"], h["merchant"]): h["category_id"] for h in history}
 
-    # Everything else goes to the LLM in one call.
-    unknown = sorted({k for k in keys if k not in known})
-    if unknown:
+    # Everything else goes to the LLM, one call per direction.
+    for row_type in types:
+        unknown = sorted({m for t, m in keys if t == row_type and (t, m) not in known})
+        if not unknown:
+            continue
         categories = await fetch_all(
             db,
             "SELECT id, name FROM categories "
             "WHERE type = %s AND (user_id IS NULL OR user_id = %s) "
             "ORDER BY sort_order, name",
-            [body.type, current_user.id],
+            [row_type, current_user.id],
         )
         picks = await categorize_items(
             "bank card statement", unknown, [c["name"] for c in categories]
         )
         for name, pick in zip(unknown, picks):
             if pick is not None:
-                known[name] = categories[pick]["id"]
+                known[(row_type, name)] = categories[pick]["id"]
 
     # Each stored transaction can account for one statement row only, so three
     # identical ATM withdrawals on one day stay three rows.
     existing = await fetch_all(
         db,
-        "SELECT t.transaction_date, abs(t.amount_original) AS amount, "
+        "SELECT c.type::text AS type, t.transaction_date, abs(t.amount_original) AS amount, "
         "lower(t.merchant) AS merchant, COUNT(*)::int AS n "
         "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND t.account_id = %s AND c.type = %s "
-        "AND t.transaction_date BETWEEN %s AND %s GROUP BY 1, 2, 3",
+        "WHERE t.user_id = %s AND t.account_id = %s "
+        "AND t.transaction_date BETWEEN %s AND %s GROUP BY 1, 2, 3, 4",
         [
             current_user.id,
             body.account_id,
-            body.type,
             min(r.transaction_date for r in body.rows),
             max(r.transaction_date for r in body.rows),
         ],
     )
     remaining = {
-        (e["transaction_date"], round(e["amount"], 2), e["merchant"]): e["n"]
+        (e["type"], e["transaction_date"], round(float(e["amount"]), 2), e["merchant"]): e["n"]
         for e in existing
     }
 
     previews = []
     for row, key in zip(body.rows, keys):
-        slot = (row.transaction_date, round(row.amount, 2), key)
+        slot = (row.type, row.transaction_date, round(row.amount, 2), key[1])
         duplicate = remaining.get(slot, 0) > 0
         if duplicate:
             remaining[slot] -= 1

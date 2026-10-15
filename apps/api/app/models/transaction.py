@@ -91,13 +91,13 @@ class TransferCreate(BaseModel):
 class StatementRowIn(BaseModel):
     transaction_date: date
     amount: float = Field(..., gt=0)
+    # Statement debit column -> expense, credit column -> income.
+    type: Literal["income", "expense"]
     description: str = Field(..., min_length=1, max_length=200)
 
 
 class StatementPreviewRequest(BaseModel):
     account_id: str
-    # Debit export -> expense, credit export -> income.
-    type: Literal["income", "expense"]
     rows: List[StatementRowIn] = Field(..., max_length=500)
 
 

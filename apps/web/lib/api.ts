@@ -134,9 +134,13 @@ export const transactionsApi = {
 
 export interface StatementPreviewInput {
   account_id: string;
-  /** Which export this is: the debit list holds expenses, the credit list income. */
-  type: 'income' | 'expense';
-  rows: { transaction_date: string; amount: number; description: string }[];
+  rows: {
+    transaction_date: string;
+    amount: number;
+    /** Statement debit column -> expense, credit column -> income. */
+    type: 'income' | 'expense';
+    description: string;
+  }[];
 }
 
 /** One entry per submitted statement row, in the same order. */
