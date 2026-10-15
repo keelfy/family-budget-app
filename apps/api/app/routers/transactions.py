@@ -122,6 +122,9 @@ async def list_transactions(
     annual_budget_id: Optional[str] = Query(
         None, description="Filter by annual budget"
     ),
+    search: Optional[str] = Query(
+        None, description="Case-insensitive text match on description or merchant"
+    ),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = Depends(get_current_user),
@@ -141,6 +144,13 @@ async def list_transactions(
         if value:
             conditions.append(f"t.{column} = %s")
             params.append(value)
+
+    if search and search.strip():
+        escaped = (
+            search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        conditions.append("(t.description ILIKE %s OR t.merchant ILIKE %s)")
+        params.extend([f"%{escaped}%"] * 2)
 
     rows = await fetch_all(
         db,

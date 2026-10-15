@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -99,46 +99,42 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
 
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionSchema),
-    defaultValues: {
-      account_id: '',
-      category_id: '',
-      amount_original: 0,
-      currency_original: 'EUR',
-      transaction_date: new Date(),
-      accounting_period: undefined,
-      description: '',
-      merchant: '',
-      notes: '',
-      allowance_id: null,
-      annual_budget_id: null,
-      items: [],
-    },
+    // Selects must mount with their final value; resetting afterwards leaves them on the placeholder.
+    defaultValues: transaction
+      ? {
+          account_id: transaction.account_id,
+          category_id: transaction.category_id,
+          amount_original: Math.abs(transaction.amount_original),
+          currency_original: transaction.currency_original,
+          transaction_date: parseLocalDate(transaction.transaction_date),
+          accounting_period: transaction.accounting_period,
+          description: transaction.description || '',
+          merchant: transaction.merchant || '',
+          notes: transaction.notes || '',
+          allowance_id: transaction.allowance_id || null,
+          annual_budget_id: transaction.annual_budget_id || null,
+          items: (transaction.items ?? []).map(({ name, amount, category_id }) => ({
+            name,
+            amount,
+            category_id: category_id ?? '',
+          })),
+        }
+      : {
+          account_id: '',
+          category_id: '',
+          amount_original: 0,
+          currency_original: 'EUR',
+          transaction_date: new Date(),
+          accounting_period: undefined,
+          description: '',
+          merchant: '',
+          notes: '',
+          allowance_id: null,
+          annual_budget_id: null,
+          items: [],
+        },
   });
   const currency = useWatch({ control: form.control, name: 'currency_original' });
-
-  // Populate form when editing (wait for accounts and categories to load)
-  useEffect(() => {
-    if (transaction && accounts && categories) {
-      form.reset({
-        account_id: transaction.account_id,
-        category_id: transaction.category_id,
-        amount_original: Math.abs(transaction.amount_original),
-        currency_original: transaction.currency_original,
-        transaction_date: parseLocalDate(transaction.transaction_date),
-        accounting_period: transaction.accounting_period,
-        description: transaction.description || '',
-        merchant: transaction.merchant || '',
-        notes: transaction.notes || '',
-        allowance_id: transaction.allowance_id || null,
-        annual_budget_id: transaction.annual_budget_id || null,
-        items: (transaction.items ?? []).map(({ name, amount, category_id }) => ({
-          name,
-          amount,
-          category_id: category_id ?? '',
-        })),
-      });
-    }
-  }, [transaction, accounts, categories, form]);
 
   // Update currency when account changes (only for new transactions)
   const handleAccountChange = (accountId: string) => {

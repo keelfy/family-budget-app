@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ArrowUpRight, ArrowDownLeft, ArrowRight, Filter, Upload } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft, ArrowRight, Filter, Search, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -32,11 +33,19 @@ export default function TransactionsPage() {
   const router = useRouter();
   const [period, setPeriod] = useState(getCurrentPeriod());
   const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [importOpen, setImportOpen] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const { data: transactions, isLoading } = useTransactions({
     period,
     account_id: accountFilter !== 'all' ? accountFilter : undefined,
+    search: debouncedSearch || undefined,
   });
   const { data: accounts } = useAccounts();
 
@@ -98,18 +107,31 @@ export default function TransactionsPage() {
             </SelectContent>
           </Select>
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-56">
               <SelectValue placeholder="All accounts" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All accounts</SelectItem>
-              {accounts?.map((acc) => (
+              {accounts
+                ?.slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((acc) => (
                 <SelectItem key={acc.id} value={acc.id}>
-                  {acc.name}
+                  {acc.name} ({acc.currency_code})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <div className="relative w-56">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search transactions"
+              className="pl-9"
+            />
+          </div>
         </CardContent>
       </Card>
 

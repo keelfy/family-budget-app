@@ -143,6 +143,7 @@ export const transactionsApi = {
     if (params?.category_id) searchParams.set('category_id', params.category_id);
     if (params?.allowance_id) searchParams.set('allowance_id', params.allowance_id);
     if (params?.annual_budget_id) searchParams.set('annual_budget_id', params.annual_budget_id);
+    if (params?.search) searchParams.set('search', params.search);
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     const query = searchParams.toString();
     return api<Transaction[]>(`/api/v1/transactions${query ? `?${query}` : ''}`);
@@ -369,6 +370,8 @@ export interface TransactionFilters {
   category_id?: string;
   allowance_id?: string;
   annual_budget_id?: string;
+  /** Matches description or merchant. */
+  search?: string;
   limit?: number;
 }
 
