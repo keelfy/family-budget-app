@@ -11,11 +11,11 @@ _BUDGET_SELECT = """
     SELECT b.*,
            c.name AS category_name,
            COALESCE((
-               SELECT SUM(ABS(t.amount_base_eur))
-               FROM transactions t
-               WHERE t.user_id = b.user_id
-                 AND t.category_id = b.category_id
-                 AND t.accounting_period = b.period
+               SELECT SUM(v.amount_eur)
+               FROM transaction_category_amounts v
+               WHERE v.user_id = b.user_id
+                 AND v.category_id = b.category_id
+                 AND v.accounting_period = b.period
            ), 0) AS spent_amount
     FROM budgets b
     JOIN categories c ON c.id = b.category_id

@@ -261,12 +261,17 @@ export interface TransactionItem {
   name: string;
   amount: number;
   position: number;
+  /** null: same category as the transaction. */
+  category_id: string | null;
+  category_name: string | null;
 }
 
 /** A receipt line; amounts are in the transaction's currency. */
 export interface TransactionItemInput {
   name: string;
   amount: number;
+  /** Omit to use the transaction's category. */
+  category_id?: string;
 }
 
 export interface Transaction {

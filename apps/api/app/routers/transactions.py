@@ -59,6 +59,33 @@ def _reject_transfer_items(category_type: str) -> None:
         )
 
 
+async def _check_item_categories(
+    db: AsyncConnection,
+    user_id: str,
+    category_ids: List[Optional[str]],
+    category_type: str,
+) -> None:
+    """Item categories must be visible to the user and share the transaction's type."""
+    ids = sorted({cid for cid in category_ids if cid})
+    if not ids:
+        return
+    rows = await fetch_all(
+        db,
+        "SELECT id, type FROM categories "
+        "WHERE id = ANY(%s::uuid[]) AND (user_id IS NULL OR user_id = %s)",
+        [ids, user_id],
+    )
+    if len(rows) != len(ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Category not found"
+        )
+    if any(row["type"] != category_type for row in rows):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Item category must have the same type as the transaction category",
+        )
+
+
 async def _replace_items(
     db: AsyncConnection, transaction_id: str, items: List[TransactionItemIn]
 ) -> None:
@@ -73,6 +100,7 @@ async def _replace_items(
                 "transaction_id": transaction_id,
                 "name": item.name,
                 "amount": item.amount,
+                "category_id": item.category_id,
                 "position": position,
             },
         )
@@ -143,8 +171,11 @@ async def get_transaction(
     if row["items_count"]:
         items = await fetch_all(
             db,
-            "SELECT id, name, amount, position FROM transaction_items "
-            "WHERE transaction_id = %s ORDER BY position",
+            "SELECT ti.id, ti.name, ti.amount, ti.position, ti.category_id, "
+            "c.name AS category_name "
+            "FROM transaction_items ti "
+            "LEFT JOIN categories c ON c.id = ti.category_id "
+            "WHERE ti.transaction_id = %s ORDER BY ti.position",
             [transaction_id],
         )
 
@@ -207,6 +238,12 @@ async def create_transaction(
     if transaction.items:
         _reject_transfer_items(category["type"])
         _check_items_total(transaction.items, transaction.amount_original)
+        await _check_item_categories(
+            db,
+            current_user.id,
+            [item.category_id for item in transaction.items],
+            category["type"],
+        )
 
     # Convert to EUR
     amount_eur, rate, source = await convert_amount(
@@ -315,7 +352,24 @@ async def update_transaction(
             "SELECT type FROM categories WHERE id = %s",
             [update_data.get("category_id", existing["category_id"])],
         )
-        _reject_transfer_items(category["type"] if category else "")
+        category_type = category["type"] if category else ""
+        _reject_transfer_items(category_type)
+        if items is not None:
+            item_category_ids = [item.category_id for item in items]
+        else:
+            # Kept items must still match the (possibly changed) transaction category.
+            item_category_ids = [
+                row["category_id"]
+                for row in await fetch_all(
+                    db,
+                    "SELECT category_id FROM transaction_items "
+                    "WHERE transaction_id = %s AND category_id IS NOT NULL",
+                    [transaction_id],
+                )
+            ]
+        await _check_item_categories(
+            db, current_user.id, item_category_ids, category_type
+        )
     if items:
         if "amount_original" in update_data:
             _check_items_total(items, update_data["amount_original"])

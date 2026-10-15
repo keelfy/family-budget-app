@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -57,6 +57,7 @@ const transactionSchema = z
         z.object({
           name: z.string().trim().min(1, 'Item name is required'),
           amount: z.coerce.number().min(0.01, 'Item amount must be greater than 0'),
+          category_id: z.string().optional(),
         })
       )
       .default([]),
@@ -124,7 +125,11 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
         notes: transaction.notes || '',
         allowance_id: transaction.allowance_id || null,
         annual_budget_id: transaction.annual_budget_id || null,
-        items: (transaction.items ?? []).map(({ name, amount }) => ({ name, amount })),
+        items: (transaction.items ?? []).map(({ name, amount, category_id }) => ({
+          name,
+          amount,
+          category_id: category_id ?? '',
+        })),
       });
     }
   }, [transaction, accounts, categories, form]);
@@ -153,13 +158,27 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
   const transferCategories = categories?.filter((c) => c.type === 'transfer') || [];
   const categoryId = useWatch({ control: form.control, name: 'category_id' });
   const selectedCategoryType = categories?.find((c) => c.id === categoryId)?.type;
+  const itemCategories = useMemo(
+    () =>
+      selectedCategoryType
+        ? (categories ?? []).filter((c) => c.type === selectedCategoryType)
+        : [],
+    [categories, selectedCategoryType]
+  );
 
   const onSubmit = async (data: TransactionFormValues) => {
     try {
       // Derive accounting_period from transaction_date if not explicitly set
       const accountingPeriod = data.accounting_period || getPeriodFromDate(data.transaction_date);
       const transactionDate = formatDateLocal(data.transaction_date);
-      const items = data.items.map(({ name, amount }) => ({ name, amount }));
+      const itemCategoryIds = new Set(itemCategories.map((c) => c.id));
+      const items = data.items.map(({ name, amount, category_id }) => ({
+        name,
+        amount,
+        // Drop a category that no longer fits the transaction's type.
+        category_id:
+          category_id && itemCategoryIds.has(category_id) ? category_id : undefined,
+      }));
       const amount = items.length > 0 ? sumItems(items) : data.amount_original;
 
       if (isEditing && transaction) {
@@ -342,7 +361,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
         </div>
 
         {selectedCategoryType !== 'transfer' && (
-          <TransactionItemsEditor currency={currency} />
+          <TransactionItemsEditor currency={currency} categories={itemCategories} />
         )}
 
         <FormField

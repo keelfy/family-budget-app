@@ -44,9 +44,9 @@ async def get_dashboard_report(
     # Get monthly totals by category type
     totals = await fetch_all(
         db,
-        "SELECT c.type, SUM(ABS(t.amount_base_eur)) AS total "
-        "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND t.accounting_period = %s "
+        "SELECT c.type, SUM(v.amount_eur) AS total "
+        "FROM transaction_category_amounts v JOIN categories c ON c.id = v.category_id "
+        "WHERE v.user_id = %s AND v.accounting_period = %s "
         "GROUP BY c.type",
         [current_user.id, period],
     )
@@ -140,9 +140,9 @@ async def get_cash_flow_report(
     # Get transactions with categories
     transactions = await fetch_all(
         db,
-        "SELECT t.amount_base_eur, t.category_id, c.name AS category_name, c.type AS category_type "
-        "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND t.accounting_period = %s",
+        "SELECT v.amount_eur, v.category_id, c.name AS category_name, c.type AS category_type "
+        "FROM transaction_category_amounts v JOIN categories c ON c.id = v.category_id "
+        "WHERE v.user_id = %s AND v.accounting_period = %s",
         [current_user.id, period],
     )
 
@@ -154,7 +154,7 @@ async def get_cash_flow_report(
         cat_type = t["category_type"]
         cat_id = t["category_id"]
         cat_name = t["category_name"]
-        amount = abs(t["amount_base_eur"])
+        amount = t["amount_eur"]
 
         if cat_type == "income":
             income += amount

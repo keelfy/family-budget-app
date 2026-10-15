@@ -7,11 +7,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 export interface ItemFormValue {
   name: string;
   amount: number | string;
+  /** '' = same category as the transaction. */
+  category_id?: string;
+}
+
+export interface ItemCategoryOption {
+  id: string;
+  name: string;
 }
 
 export function sumItems(items: ItemFormValue[] | undefined): number {
@@ -56,19 +63,26 @@ export function ItemsAwareAmountInput({
 const ItemRow = memo(function ItemRow({
   index,
   isLast,
+  categories,
   onRemove,
   onAdd,
 }: {
   index: number;
   isLast: boolean;
+  categories: ItemCategoryOption[];
   onRemove: (index: number) => void;
   onAdd: () => void;
 }) {
-  const { register } = useFormContext();
+  const { register, control } = useFormContext();
+  const categoryId = useWatch({ control, name: `items.${index}.category_id` }) as
+    | string
+    | undefined;
+  const known = !!categoryId && categories.some((c) => c.id === categoryId);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Input
+        className="min-w-0 flex-1 basis-40"
         placeholder="Item"
         aria-label={`Item ${index + 1} name`}
         {...register(`items.${index}.name`)}
@@ -99,12 +113,35 @@ const ItemRow = memo(function ItemRow({
       >
         <X className="h-4 w-4" />
       </Button>
+      <select
+        aria-label={`Item ${index + 1} category`}
+        className={cn(
+          'h-8 w-full rounded-md border border-input bg-background px-2 text-xs',
+          known ? 'text-foreground' : 'text-muted-foreground'
+        )}
+        {...register(`items.${index}.category_id`)}
+        value={known ? categoryId : ''}
+      >
+        <option value="">Same category as the transaction</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 });
 
 /** Receipt lines for one transaction. The transaction amount is their sum. */
-export function TransactionItemsEditor({ currency }: { currency: string }) {
+export function TransactionItemsEditor({
+  currency,
+  categories,
+}: {
+  currency: string;
+  /** Categories an item may use: same type as the transaction's category. */
+  categories: ItemCategoryOption[];
+}) {
   const {
     control,
     getValues,
@@ -121,13 +158,13 @@ export function TransactionItemsEditor({ currency }: { currency: string }) {
     ? rowErrors.map((row) => row?.name?.message ?? row?.amount?.message).find(Boolean)
     : undefined;
 
-  const addItem = () => append({ name: '', amount: '' });
+  const addItem = () => append({ name: '', amount: '', category_id: '' });
 
   const toggle = (checked: boolean) => {
     if (checked) {
       // Seed the first line with the amount typed so far.
       const current = Number(getValues('amount_original')) || 0;
-      append({ name: '', amount: current > 0 ? current : '' });
+      append({ name: '', amount: current > 0 ? current : '', category_id: '' });
     } else {
       // Keep the total as a plain amount once the lines are gone.
       setValue('amount_original', sumItems(getValues('items')) || getValues('amount_original'));
@@ -155,6 +192,7 @@ export function TransactionItemsEditor({ currency }: { currency: string }) {
                 key={field.id}
                 index={index}
                 isLast={index === fields.length - 1}
+                categories={categories}
                 onRemove={remove}
                 onAdd={addItem}
               />

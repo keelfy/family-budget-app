@@ -116,6 +116,12 @@ async def delete_category(
     has_transactions = await fetch_one(
         db, "SELECT 1 FROM transactions WHERE category_id = %s LIMIT 1", [category_id]
     )
+    if not has_transactions:
+        has_transactions = await fetch_one(
+            db,
+            "SELECT 1 FROM transaction_items WHERE category_id = %s LIMIT 1",
+            [category_id],
+        )
     if has_transactions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

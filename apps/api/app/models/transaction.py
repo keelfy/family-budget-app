@@ -9,11 +9,14 @@ CategoryType = Literal["income", "expense", "transfer"]
 class TransactionItemIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     amount: float = Field(..., gt=0)
+    # None: same category as the transaction.
+    category_id: Optional[str] = None
 
 
 class TransactionItem(TransactionItemIn):
     id: str
     position: int
+    category_name: Optional[str] = None
 
 
 class TransactionBase(BaseModel):
