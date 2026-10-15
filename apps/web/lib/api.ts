@@ -130,6 +130,24 @@ export const transactionsApi = {
   transfer: (data: TransferInput) => api<Transaction>('/api/v1/transactions/transfer', { method: 'POST', body: data }),
 };
 
+// Receipt API
+export interface ReceiptPreview {
+  invoice_number: string;
+  merchant: string;
+  address: string | null;
+  transaction_date: string;
+  currency: string;
+  total: number;
+  items: { name: string; amount: number; category_id: string | null }[];
+  /** Suggested transaction category; null when items could not be categorized. */
+  category_id: string | null;
+}
+
+export const receiptsApi = {
+  parse: (url: string) =>
+    api<ReceiptPreview>('/api/v1/receipts/parse', { method: 'POST', body: { url } }),
+};
+
 // Category API
 export const categoriesApi = {
   list: () => api<Category[]>('/api/v1/categories'),
@@ -290,6 +308,8 @@ export interface Transaction {
   transaction_date: string;
   accounting_period: string;
   description?: string;
+  /** Where the purchase was made. */
+  merchant?: string | null;
   notes?: string;
   allowance_id: string | null;
   allowance_name?: string;
@@ -318,6 +338,7 @@ export interface CreateTransactionInput {
   transaction_date: string;
   accounting_period?: string;
   description?: string;
+  merchant?: string;
   notes?: string;
   allowance_id?: string | null;
   annual_budget_id?: string | null;
@@ -331,6 +352,8 @@ export interface UpdateTransactionInput {
   transaction_date?: string;
   accounting_period?: string;
   description?: string;
+  /** null clears it. */
+  merchant?: string | null;
   notes?: string;
   allowance_id?: string | null;
   annual_budget_id?: string | null;

@@ -17,6 +17,11 @@ from app.models.transaction import (
     TransactionUpdate,
     TransferCreate,
 )
+from app.models.receipt import (
+    ReceiptItem,
+    ReceiptParseRequest,
+    ReceiptPreview,
+)
 from app.models.budget import (
     Budget,
     BudgetCreate,
@@ -57,6 +62,9 @@ from app.models.report import (
 )
 
 __all__ = [
+    "ReceiptItem",
+    "ReceiptParseRequest",
+    "ReceiptPreview",
     "Account",
     "AccountCreate",
     "AccountUpdate",

@@ -27,6 +27,7 @@ class TransactionBase(BaseModel):
     transaction_date: date
     accounting_period: Optional[str] = None  # YYYY-MM, defaults to transaction_date month
     description: Optional[str] = None
+    merchant: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = None
     allowance_id: Optional[str] = None
     annual_budget_id: Optional[str] = None
@@ -44,6 +45,7 @@ class TransactionUpdate(BaseModel):
     transaction_date: Optional[date] = None
     accounting_period: Optional[str] = None
     description: Optional[str] = None
+    merchant: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = None
     allowance_id: Optional[str] = None
     annual_budget_id: Optional[str] = None

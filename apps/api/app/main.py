@@ -18,6 +18,7 @@ from app.routers import (
     investments,
     exchange_rates,
     reports,
+    receipts,
 )
 
 settings = get_settings()
@@ -76,6 +77,7 @@ app.include_router(annual_budgets.router, prefix="/api/v1/annual-budgets", tags=
 app.include_router(investments.router, prefix="/api/v1/investments", tags=["Investments"])
 app.include_router(exchange_rates.router, prefix="/api/v1/exchange-rates", tags=["Exchange Rates"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
+app.include_router(receipts.router, prefix="/api/v1/receipts", tags=["Receipts"])
 
 
 @app.get("/")

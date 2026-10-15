@@ -276,6 +276,7 @@ async def create_transaction(
                 "transaction_date": transaction.transaction_date,
                 "accounting_period": accounting_period,
                 "description": transaction.description,
+                "merchant": transaction.merchant,
                 "notes": transaction.notes,
                 "allowance_id": transaction.allowance_id,
                 "annual_budget_id": transaction.annual_budget_id,

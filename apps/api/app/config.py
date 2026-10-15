@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # Exchange Rate API
     frankfurter_api_url: str = "https://api.frankfurter.app"
 
+    # Receipt item categorization: any OpenAI-compatible chat-completions API.
+    # Empty key disables it (items are imported uncategorized).
+    llm_api_key: str = ""
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    llm_model: str = "gemini-2.5-flash-lite"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

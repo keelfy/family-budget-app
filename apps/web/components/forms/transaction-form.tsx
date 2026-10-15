@@ -32,7 +32,8 @@ import { useAnnualBudgets } from '@/hooks/use-annual-budgets';
 import { useCreateTransaction, useUpdateTransaction } from '@/hooks/use-transactions';
 import { useToast } from '@/components/ui/use-toast';
 import { getPeriodFromDate, formatDateLocal, parseLocalDate } from '@/lib/utils';
-import { Transaction } from '@/lib/api';
+import { ReceiptPreview, Transaction } from '@/lib/api';
+import { ReceiptScanButton } from '@/components/forms/receipt-scan-button';
 import {
   ItemsAwareAmountInput,
   TransactionItemsEditor,
@@ -49,6 +50,7 @@ const transactionSchema = z
     transaction_date: z.date(),
     accounting_period: z.string().optional(),
     description: z.string().optional(),
+    merchant: z.string().optional(),
     notes: z.string().optional(),
     allowance_id: z.string().nullable().default(null),
     annual_budget_id: z.string().nullable().default(null),
@@ -103,6 +105,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
       transaction_date: new Date(),
       accounting_period: undefined,
       description: '',
+      merchant: '',
       notes: '',
       allowance_id: null,
       annual_budget_id: null,
@@ -122,6 +125,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
         transaction_date: parseLocalDate(transaction.transaction_date),
         accounting_period: transaction.accounting_period,
         description: transaction.description || '',
+        merchant: transaction.merchant || '',
         notes: transaction.notes || '',
         allowance_id: transaction.allowance_id || null,
         annual_budget_id: transaction.annual_budget_id || null,
@@ -151,6 +155,26 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
       form.setValue('transaction_date', date);
       form.setValue('accounting_period', getPeriodFromDate(date));
     }
+  };
+
+  const handleReceipt = (receipt: ReceiptPreview) => {
+    form.setValue('currency_original', receipt.currency);
+    form.setValue('merchant', receipt.merchant);
+    handleDateChange(parseLocalDate(receipt.transaction_date));
+    const current = categories?.find((c) => c.id === form.getValues('category_id'));
+    if (receipt.category_id) {
+      form.setValue('category_id', receipt.category_id);
+    } else if (current?.type !== 'expense') {
+      form.setValue('category_id', '');
+    }
+    form.setValue(
+      'items',
+      receipt.items.map(({ name, amount, category_id }) => ({
+        name,
+        amount,
+        category_id: category_id ?? '',
+      }))
+    );
   };
 
   const incomeCategories = categories?.filter((c) => c.type === 'income') || [];
@@ -190,6 +214,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
             transaction_date: transactionDate,
             accounting_period: accountingPeriod,
             description: data.description,
+            merchant: data.merchant || null,
             notes: data.notes,
             allowance_id: data.allowance_id,
             annual_budget_id: data.annual_budget_id,
@@ -200,6 +225,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
       } else {
         await createTransaction.mutateAsync({
           ...data,
+          merchant: data.merchant || undefined,
           amount_original: amount,
           items: items.length > 0 ? items : undefined,
           transaction_date: transactionDate,
@@ -222,6 +248,8 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {!isEditing && <ReceiptScanButton onParsed={handleReceipt} />}
+
         <FormField
           control={form.control}
           name="account_id"
@@ -386,6 +414,20 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
               <FormLabel>Description</FormLabel>
               <FormControl>
                 <Input placeholder="What was this for?" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="merchant"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Place of purchase</FormLabel>
+              <FormControl>
+                <Input placeholder="Shop or merchant" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
