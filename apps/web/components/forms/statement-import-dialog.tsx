@@ -29,13 +29,17 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/components/ui/use-toast';
 import { useAccounts } from '@/hooks/use-accounts';
+import { useAllowances } from '@/hooks/use-allowances';
 import { useCategories } from '@/hooks/use-categories';
 import { useCreateTransaction, useStatementImportPreview } from '@/hooks/use-transactions';
 import { readStatementPdf, type StatementRow } from '@/lib/bank-statement';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
+const NO_ALLOWANCE = 'none';
+
 interface ImportRow extends StatementRow {
   categoryId: string | null;
+  allowanceId: string | null;
   duplicate: boolean;
   selected: boolean;
 }
@@ -55,6 +59,7 @@ export function StatementImportDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
+  const { data: allowances } = useAllowances();
   const preview = useStatementImportPreview();
   const createTransaction = useCreateTransaction();
 
@@ -67,6 +72,7 @@ export function StatementImportDialog({
   const chosen = rows.filter((r) => r.selected);
   const missingCategory = chosen.filter((r) => !r.categoryId).length;
   const duplicates = rows.filter((r) => r.duplicate).length;
+  const activeAllowances = allowances?.filter((a) => a.is_active) ?? [];
 
   const close = () => {
     setRows([]);
@@ -110,6 +116,7 @@ export function StatementImportDialog({
         parsed.map((row, i) => ({
           ...row,
           categoryId: suggestions[i].category_id,
+          allowanceId: null,
           duplicate: suggestions[i].duplicate,
           selected: !suggestions[i].duplicate,
         }))
@@ -143,6 +150,7 @@ export function StatementImportDialog({
           currency_original: account.currency_code,
           transaction_date: row.date,
           merchant: row.description.slice(0, 200),
+          allowance_id: row.type === 'expense' ? row.allowanceId : null,
         });
         created += 1;
       } catch {
@@ -165,7 +173,7 @@ export function StatementImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Import bank statement</DialogTitle>
           <DialogDescription>
@@ -217,6 +225,30 @@ export function StatementImportDialog({
             )}
             {reading ? 'Reading...' : 'Choose PDF'}
           </Button>
+          {rows.length > 0 && activeAllowances.length > 0 && (
+            <Select
+              value=""
+              onValueChange={(id) =>
+                setRows((current) =>
+                  current.map((r) =>
+                    r.type === 'expense' ? { ...r, allowanceId: id === NO_ALLOWANCE ? null : id } : r
+                  )
+                )
+              }
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue placeholder="Allowance for all expenses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_ALLOWANCE}>No allowance</SelectItem>
+                {activeAllowances.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {rows.length > 0 && (
@@ -229,6 +261,9 @@ export function StatementImportDialog({
                   <TableHead>Merchant</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead className="w-56">Category</TableHead>
+                  {activeAllowances.length > 0 && (
+                    <TableHead className="w-48">Allowance</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -238,9 +273,11 @@ export function StatementImportDialog({
                     className={
                       row.duplicate
                         ? 'bg-yellow-100/70 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/30'
-                        : row.selected
-                          ? ''
-                          : 'opacity-60'
+                        : !row.selected
+                          ? 'opacity-60'
+                          : !row.categoryId
+                            ? 'bg-red-50 hover:bg-red-100/70 dark:bg-red-900/10 dark:hover:bg-red-900/20'
+                            : ''
                     }
                   >
                     <TableCell>
@@ -272,8 +309,12 @@ export function StatementImportDialog({
                         value={row.categoryId ?? ''}
                         onValueChange={(id) => update(i, { categoryId: id })}
                       >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Category" />
+                        <SelectTrigger
+                          className={
+                            row.categoryId ? '' : 'border-red-500 ring-1 ring-red-500/40 text-red-600'
+                          }
+                        >
+                          <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                         <SelectContent>
                           {(categories ?? [])
@@ -286,6 +327,32 @@ export function StatementImportDialog({
                         </SelectContent>
                       </Select>
                     </TableCell>
+                    {activeAllowances.length > 0 && (
+                      <TableCell>
+                        {row.type === 'expense' ? (
+                          <Select
+                            value={row.allowanceId ?? NO_ALLOWANCE}
+                            onValueChange={(id) =>
+                              update(i, { allowanceId: id === NO_ALLOWANCE ? null : id })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_ALLOWANCE}>None</SelectItem>
+                              {activeAllowances.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  {a.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -293,7 +360,7 @@ export function StatementImportDialog({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-muted-foreground">
                 {missingCategory > 0
-                  ? `${missingCategory} selected without a category`
+                  ? `${missingCategory} selected without a category (red)`
                   : `${chosen.length} of ${rows.length} selected` +
                     (duplicates > 0 ? `, ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (yellow)` : '')}
               </span>
