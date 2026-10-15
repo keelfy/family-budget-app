@@ -320,6 +320,8 @@ export interface TransferInput {
   to_account_id: string;
   amount: number;
   currency: string;
+  /** Actual amount received in the destination currency; sets your own rate. */
+  to_amount?: number;
   transaction_date: string;
   description?: string;
 }

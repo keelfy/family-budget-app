@@ -200,7 +200,9 @@ All tables enforce RLS so users can only access their own data. Policies follow 
 
 All monetary amounts are stored in their original currency and converted to EUR (base currency) for consistent reporting.
 
-**Three-tier exchange rate resolution:**
+**Your own rate comes first.** A cross-currency transfer (e.g. RSD account → EUR account) accepts the amount actually received at the exchange office. That records your own rate for the pair; every later transaction, balance and report in that currency uses the latest own rate dated on or before the transaction date (source `personal`). Without one, the market rate below applies.
+
+**Three-tier market rate resolution:**
 
 1. **In-memory cache** — instant lookup for rates already fetched this session
 2. **Database cache** — persistent `exchange_rates` table

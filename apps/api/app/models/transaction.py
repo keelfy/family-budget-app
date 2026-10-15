@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Literal
 from datetime import datetime, date
 
@@ -60,5 +60,8 @@ class TransferCreate(BaseModel):
     to_account_id: str
     amount: float
     currency: str = "EUR"
+    # Actual amount received in the destination currency (exchange-office visit).
+    # Records the user's own rate for this currency pair.
+    to_amount: Optional[float] = Field(None, gt=0)
     transaction_date: date
     description: Optional[str] = None

@@ -5,7 +5,11 @@ from psycopg import AsyncConnection
 from app.db import fetch_one
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import ExchangeRate, ExchangeRateCreate
-from app.services.currency_service import get_exchange_rate as fetch_rate, save_exchange_rate
+from app.services.currency_service import (
+    get_exchange_rate as fetch_rate,
+    get_personal_rate,
+    save_exchange_rate,
+)
 
 router = APIRouter()
 
@@ -30,6 +34,18 @@ async def get_exchange_rate(
             rate=1.0,
             rate_date=rate_date,
             source="same_currency",
+            created_at=date.today().isoformat(),
+        )
+
+    personal = await get_personal_rate(db, from_currency, to_currency, rate_date)
+    if personal is not None:
+        return ExchangeRate(
+            id="personal",
+            from_currency=from_currency,
+            to_currency=to_currency,
+            rate=personal,
+            rate_date=rate_date,
+            source="personal",
             created_at=date.today().isoformat(),
         )
 

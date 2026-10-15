@@ -31,6 +31,7 @@ const transferSchema = z.object({
   to_account_id: z.string().min(1, 'Destination account is required'),
   amount: z.coerce.number().min(0.01, 'Amount must be greater than 0'),
   currency: z.string().min(3, 'Currency is required'),
+  to_amount: z.coerce.number().min(0).optional(),
   transaction_date: z.date(),
   description: z.string().optional(),
 }).refine((data) => data.from_account_id !== data.to_account_id, {
@@ -59,6 +60,7 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
       to_account_id: '',
       amount: 0,
       currency: 'EUR',
+      to_amount: undefined,
       transaction_date: new Date(),
       description: '',
     },
@@ -72,6 +74,16 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
     }
   };
 
+  const [toAccountId, currency, amount, toAmount] = form.watch([
+    'to_account_id',
+    'currency',
+    'amount',
+    'to_amount',
+  ]);
+  const toCurrency = accounts?.find((a) => a.id === toAccountId)?.currency_code;
+  const isCrossCurrency = !!toCurrency && toCurrency !== currency;
+  const ownRate = isCrossCurrency && amount > 0 && toAmount ? toAmount / amount : null;
+
   const onSubmit = async (data: TransferFormValues) => {
     try {
       await transfer.mutateAsync({
@@ -79,6 +91,7 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
         to_account_id: data.to_account_id,
         amount: data.amount,
         currency: data.currency,
+        to_amount: isCrossCurrency && data.to_amount ? data.to_amount : undefined,
         transaction_date: formatDateLocal(data.transaction_date),
         description: data.description,
       });
@@ -188,6 +201,34 @@ export function TransferForm({ onSuccess, onCancel }: TransferFormProps) {
             )}
           />
         </div>
+
+        {isCrossCurrency && (
+          <FormField
+            control={form.control}
+            name="to_amount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Amount received ({toCurrency})</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Actual amount from the exchange office"
+                    {...field}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  {ownRate
+                    ? `Your rate: 1 ${currency} = ${ownRate.toFixed(4)} ${toCurrency}. Applies to later ${currency}/${toCurrency} transactions.`
+                    : 'Leave empty to use the market rate.'}
+                </p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}

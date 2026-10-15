@@ -191,6 +191,7 @@ Create a transfer between two accounts. Internally creates two linked transactio
 | `from_account_id` | UUID | Yes | Source account |
 | `to_account_id` | UUID | Yes | Destination account |
 | `amount` | number | Yes | Transfer amount (positive) |
+| `to_amount` | number | No | Actual amount received in the destination currency (cross-currency only). Records your own rate for the pair, used for later conversions (`exchange_rate_source: "personal"`) |
 | `currency` | string | Yes | Currency code |
 | `transaction_date` | string | Yes | YYYY-MM-DD |
 | `description` | string | No | Description |

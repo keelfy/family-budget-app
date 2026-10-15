@@ -11,6 +11,31 @@ settings = get_settings()
 _rate_cache: Dict[str, tuple[float, date]] = {}
 
 
+async def get_personal_rate(
+    db: AsyncConnection,
+    from_currency: str,
+    to_currency: str,
+    rate_date: date,
+) -> Optional[float]:
+    """
+    The user's own rate: the latest manually recorded rate (a real exchange-office
+    visit) dated on or before rate_date. Either direction of the pair matches.
+    """
+    row = await fetch_one(
+        db,
+        "SELECT from_currency, rate FROM exchange_rates "
+        "WHERE source = 'manual' AND rate_date <= %s AND rate > 0 "
+        "AND ((from_currency = %s AND to_currency = %s) "
+        "  OR (from_currency = %s AND to_currency = %s)) "
+        "ORDER BY rate_date DESC, created_at DESC LIMIT 1",
+        [rate_date, from_currency, to_currency, to_currency, from_currency],
+    )
+    if not row:
+        return None
+    rate = float(row["rate"])
+    return rate if row["from_currency"] == from_currency else 1 / rate
+
+
 async def get_exchange_rate(
     from_currency: str,
     to_currency: str,
@@ -18,18 +43,35 @@ async def get_exchange_rate(
     db: Optional[AsyncConnection] = None,
 ) -> float:
     """
-    Get exchange rate with three-tier caching:
-    1. In-memory cache
-    2. Database cache
-    3. Frankfurter API
-
-    Returns rate to convert from_currency to to_currency.
+    Get the rate to convert from_currency to to_currency: the user's own rate
+    when one is recorded, otherwise the market rate.
     """
     if from_currency == to_currency:
         return 1.0
 
     if rate_date is None:
         rate_date = date.today()
+
+    if db:
+        personal = await get_personal_rate(db, from_currency, to_currency, rate_date)
+        if personal is not None:
+            return personal
+
+    return await get_market_rate(from_currency, to_currency, rate_date, db)
+
+
+async def get_market_rate(
+    from_currency: str,
+    to_currency: str,
+    rate_date: date,
+    db: Optional[AsyncConnection] = None,
+) -> float:
+    """
+    Get market exchange rate with three-tier caching:
+    1. In-memory cache
+    2. Database cache
+    3. Frankfurter API
+    """
 
     cache_key = f"{from_currency}_{to_currency}_{rate_date}"
 
@@ -141,7 +183,8 @@ async def convert_amount(
     manual_rate: Optional[float] = None,
 ) -> tuple[float, float, str]:
     """
-    Convert amount from one currency to another.
+    Convert amount from one currency to another. Precedence: explicit manual_rate,
+    the user's own recorded rate, the market rate.
 
     Returns: (converted_amount, exchange_rate, rate_source)
     """
@@ -151,7 +194,15 @@ async def convert_amount(
     if manual_rate is not None:
         return amount * manual_rate, manual_rate, "manual"
 
-    rate = await get_exchange_rate(from_currency, to_currency, rate_date, db)
+    if rate_date is None:
+        rate_date = date.today()
+
+    if db:
+        personal = await get_personal_rate(db, from_currency, to_currency, rate_date)
+        if personal is not None:
+            return amount * personal, personal, "personal"
+
+    rate = await get_market_rate(from_currency, to_currency, rate_date, db)
     return amount * rate, rate, "frankfurter"
 
 

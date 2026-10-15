@@ -7,7 +7,7 @@ from psycopg import AsyncConnection
 from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.models import Transaction, TransactionCreate, TransactionUpdate, TransferCreate
-from app.services.currency_service import convert_amount
+from app.services.currency_service import convert_amount, save_exchange_rate
 
 router = APIRouter()
 
@@ -324,27 +324,46 @@ async def create_transfer(
 
     category_id = transfer_category["id"]
 
-    # Convert to EUR
-    amount_eur, rate, source = await convert_amount(
-        transfer.amount, transfer.currency, "EUR", transfer.transaction_date, db
-    )
-
     accounting_period = get_accounting_period(transfer.transaction_date)
-
-    # Convert amount to destination currency if different
     to_currency = to_account["currency_code"]
-    if to_currency != transfer.currency:
-        to_amount, _, _ = await convert_amount(
-            transfer.amount,
-            transfer.currency,
-            to_currency,
-            transfer.transaction_date,
-            db,
+
+    if transfer.to_amount is not None and (
+        to_currency == transfer.currency or transfer.amount == 0
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="to_amount requires a non-zero cross-currency transfer",
         )
-    else:
-        to_amount = transfer.amount
 
     async with db.transaction():
+        if transfer.to_amount is not None:
+            # Real exchange: the actual amounts define the user's own rate,
+            # which then applies to later transactions in this currency pair.
+            await save_exchange_rate(
+                db,
+                transfer.currency,
+                to_currency,
+                transfer.to_amount / abs(transfer.amount),
+                transfer.transaction_date,
+                "manual",
+            )
+            to_amount = transfer.to_amount
+        elif to_currency != transfer.currency:
+            to_amount, _, _ = await convert_amount(
+                transfer.amount,
+                transfer.currency,
+                to_currency,
+                transfer.transaction_date,
+                db,
+            )
+        else:
+            to_amount = transfer.amount
+
+        # Convert to EUR (picks up the rate saved above)
+        amount_eur, rate, source = await convert_amount(
+            transfer.amount, transfer.currency, "EUR", transfer.transaction_date, db
+        )
+
         # Outgoing transaction (from account)
         outgoing = await insert(
             db,
