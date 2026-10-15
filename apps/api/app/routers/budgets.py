@@ -1,57 +1,54 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
-from supabase import Client
+from psycopg import AsyncConnection
+from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import Budget, BudgetCreate, BudgetUpdate, BudgetComparison, BudgetCopy
 
 router = APIRouter()
+
+_BUDGET_SELECT = """
+    SELECT b.*,
+           c.name AS category_name,
+           COALESCE((
+               SELECT SUM(ABS(t.amount_base_eur))
+               FROM transactions t
+               WHERE t.user_id = b.user_id
+                 AND t.category_id = b.category_id
+                 AND t.accounting_period = b.period
+           ), 0) AS spent_amount
+    FROM budgets b
+    JOIN categories c ON c.id = b.category_id
+"""
 
 
 @router.get("", response_model=List[Budget])
 async def list_budgets(
     period: Optional[str] = Query(None, description="Filter by period (YYYY-MM)"),
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """List all budgets for the current user."""
-    query = db.table("budgets").select(
-        "*, categories!inner(name)"
-    ).eq("user_id", current_user.id)
-
+    conditions = ["b.user_id = %s"]
+    params: list = [current_user.id]
     if period:
-        query = query.eq("period", period)
+        conditions.append("b.period = %s")
+        params.append(period)
 
-    result = query.order("period", desc=True).execute()
+    rows = await fetch_all(
+        db,
+        f"{_BUDGET_SELECT} WHERE {' AND '.join(conditions)} ORDER BY b.period DESC",
+        params,
+    )
 
-    budgets = []
-    for b in result.data:
-        # Calculate spent amount for this budget
-        transactions = db.table("transactions").select("amount_base_eur").eq(
-            "user_id", current_user.id
-        ).eq("category_id", b["category_id"]).eq("accounting_period", b["period"]).execute()
-
-        spent = sum(abs(t["amount_base_eur"]) for t in transactions.data)
-
-        budgets.append(Budget(
-            id=b["id"],
-            user_id=b["user_id"],
-            category_id=b["category_id"],
-            category_name=b["categories"]["name"] if b.get("categories") else None,
-            period=b["period"],
-            amount_planned=b["amount_planned"],
-            spent_amount=spent,
-            created_at=b["created_at"],
-            updated_at=b["updated_at"],
-        ))
-
-    return budgets
+    return [Budget(**b) for b in rows]
 
 
 @router.get("/comparison", response_model=List[BudgetComparison])
 async def get_budget_comparison(
     period: str = Query(..., description="Period to compare (YYYY-MM)"),
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get budget vs actual comparison for a period."""
     budgets = await list_budgets(period, current_user, db)
@@ -70,43 +67,52 @@ async def get_budget_comparison(
     return comparisons
 
 
+async def _get_budget(budget_id: str, user_id: str, db: AsyncConnection) -> Budget:
+    row = await fetch_one(
+        db,
+        f"{_BUDGET_SELECT} WHERE b.id = %s AND b.user_id = %s",
+        [budget_id, user_id],
+    )
+    return Budget(**row)
+
+
 @router.post("", response_model=Budget, status_code=status.HTTP_201_CREATED)
 async def create_budget(
     budget: BudgetCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create a new budget."""
-    # Verify category exists
-    category = db.table("categories").select("id, name").eq("id", budget.category_id).execute()
-    if not category.data:
+    # Verify category is visible to the user
+    category = await fetch_one(
+        db,
+        "SELECT id FROM categories WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
+        [budget.category_id, current_user.id],
+    )
+    if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
     # Check for existing budget
-    existing = db.table("budgets").select("id").eq(
-        "user_id", current_user.id
-    ).eq("category_id", budget.category_id).eq("period", budget.period).execute()
-
-    if existing.data:
+    existing = await fetch_one(
+        db,
+        "SELECT id FROM budgets WHERE user_id = %s AND category_id = %s AND period = %s",
+        [current_user.id, budget.category_id, budget.period],
+    )
+    if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Budget already exists for this category and period")
 
-    data = {
-        "user_id": current_user.id,
-        "category_id": budget.category_id,
-        "period": budget.period,
-        "amount_planned": budget.amount_planned,
-    }
-
-    result = db.table("budgets").insert(data).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create budget")
-
-    return Budget(
-        **result.data[0],
-        category_name=category.data[0]["name"],
-        spent_amount=0,
+    created = await insert(
+        db,
+        "budgets",
+        {
+            "user_id": current_user.id,
+            "category_id": budget.category_id,
+            "period": budget.period,
+            "amount_planned": budget.amount_planned,
+        },
     )
+
+    return await _get_budget(created["id"], current_user.id, db)
 
 
 @router.patch("/{budget_id}", response_model=Budget)
@@ -114,83 +120,63 @@ async def update_budget(
     budget_id: str,
     budget: BudgetUpdate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Update a budget."""
-    # Verify ownership
-    existing = db.table("budgets").select("*").eq("id", budget_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    updated = await update(
+        db,
+        "budgets",
+        {"amount_planned": budget.amount_planned},
+        {"id": budget_id, "user_id": current_user.id},
+    )
+    if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
 
-    result = db.table("budgets").update({
-        "amount_planned": budget.amount_planned
-    }).eq("id", budget_id).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to update budget")
-
-    # Get category name
-    category = db.table("categories").select("name").eq("id", result.data[0]["category_id"]).execute()
-
-    # Calculate spent
-    transactions = db.table("transactions").select("amount_base_eur").eq(
-        "user_id", current_user.id
-    ).eq("category_id", result.data[0]["category_id"]).eq("accounting_period", result.data[0]["period"]).execute()
-
-    spent = sum(abs(t["amount_base_eur"]) for t in transactions.data)
-
-    return Budget(
-        **result.data[0],
-        category_name=category.data[0]["name"] if category.data else None,
-        spent_amount=spent,
-    )
+    return await _get_budget(budget_id, current_user.id, db)
 
 
 @router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_budget(
     budget_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Delete a budget."""
-    existing = db.table("budgets").select("id").eq("id", budget_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    existing = await fetch_one(
+        db,
+        "SELECT id FROM budgets WHERE id = %s AND user_id = %s",
+        [budget_id, current_user.id],
+    )
+    if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
 
-    db.table("budgets").delete().eq("id", budget_id).execute()
+    await execute(db, "DELETE FROM budgets WHERE id = %s", [budget_id])
 
 
 @router.post("/copy", response_model=List[Budget])
 async def copy_budgets(
     copy_data: BudgetCopy,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Copy budgets from one period to another."""
-    # Get source budgets
-    source_budgets = db.table("budgets").select("*").eq(
-        "user_id", current_user.id
-    ).eq("period", copy_data.from_period).execute()
+    source_budgets = await fetch_all(
+        db,
+        "SELECT category_id, amount_planned FROM budgets WHERE user_id = %s AND period = %s",
+        [current_user.id, copy_data.from_period],
+    )
 
-    if not source_budgets.data:
+    if not source_budgets:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No budgets found in source period")
 
-    created_budgets = []
-    for budget in source_budgets.data:
-        # Check if budget already exists in target period
-        existing = db.table("budgets").select("id").eq(
-            "user_id", current_user.id
-        ).eq("category_id", budget["category_id"]).eq("period", copy_data.to_period).execute()
-
-        if not existing.data:
-            new_budget = {
-                "user_id": current_user.id,
-                "category_id": budget["category_id"],
-                "period": copy_data.to_period,
-                "amount_planned": budget["amount_planned"],
-            }
-            result = db.table("budgets").insert(new_budget).execute()
-            if result.data:
-                created_budgets.append(result.data[0])
+    # Skip categories that already have a budget in the target period
+    await execute(
+        db,
+        "INSERT INTO budgets (user_id, category_id, period, amount_planned) "
+        "SELECT user_id, category_id, %s, amount_planned FROM budgets "
+        "WHERE user_id = %s AND period = %s "
+        "ON CONFLICT (user_id, category_id, period) DO NOTHING",
+        [copy_data.to_period, current_user.id, copy_data.from_period],
+    )
 
     return await list_budgets(copy_data.to_period, current_user, db)

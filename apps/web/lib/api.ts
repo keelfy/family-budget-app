@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/client';
+import { clearAuthToken, encodeCredentials, getAuthToken, setAuthToken } from '@/lib/auth';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -7,19 +7,12 @@ interface RequestOptions {
   body?: unknown;
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const supabase = createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (session?.access_token) {
-    return {
-      'Authorization': `Bearer ${session.access_token}`,
-      'Content-Type': 'application/json',
-    };
-  }
+function getAuthHeaders(): Record<string, string> {
+  const token = getAuthToken();
 
   return {
     'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Basic ${token}` } : {}),
   };
 }
 
@@ -28,20 +21,83 @@ export async function api<T>(
   options: RequestOptions = {}
 ): Promise<T> {
   const { method = 'GET', body } = options;
-  const headers = await getAuthHeaders();
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method,
-    headers,
+    headers: getAuthHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  if (response.status === 401 && typeof window !== 'undefined') {
+    // Credentials missing, wrong, or changed elsewhere: sign out.
+    clearAuthToken();
+    window.location.href = '/login';
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'An error occurred' }));
     throw new Error(error.detail || 'An error occurred');
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
+}
+
+// Auth API
+export interface CurrentUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  created_at: string;
+}
+
+export const authApi = {
+  me: () => api<CurrentUser>('/api/v1/auth/me'),
+  changePassword: (current_password: string, new_password: string) =>
+    api<void>('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: { current_password, new_password },
+    }),
+};
+
+/** Validate credentials against the API and remember them for later requests. */
+export async function login(email: string, password: string): Promise<void> {
+  const token = encodeCredentials(email, password);
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Basic ${token}` },
+  });
+
+  if (response.status === 401) {
+    throw new Error('Invalid email or password');
+  }
+  if (!response.ok) {
+    throw new Error('Could not sign in');
+  }
+
+  setAuthToken(token);
+}
+
+export async function register(
+  email: string,
+  password: string,
+  displayName: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, display_name: displayName }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof error.detail === 'string' ? error.detail : 'Registration failed'
+    );
+  }
 }
 
 // Account API

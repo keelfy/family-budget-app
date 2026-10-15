@@ -2,13 +2,28 @@ from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from psycopg import AsyncConnection
 
+from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.models import Transaction, TransactionCreate, TransactionUpdate, TransferCreate
 from app.services.currency_service import convert_amount
-from supabase import Client
 
 router = APIRouter()
+
+_TRANSACTION_SELECT = """
+    SELECT t.*,
+           a.name AS account_name,
+           c.name AS category_name,
+           c.type AS category_type,
+           al.name AS allowance_name,
+           ab.name AS annual_budget_name
+    FROM transactions t
+    JOIN accounts a ON a.id = t.account_id
+    JOIN categories c ON c.id = t.category_id
+    LEFT JOIN allowances al ON al.id = t.allowance_id
+    LEFT JOIN annual_budgets ab ON ab.id = t.annual_budget_id
+"""
 
 
 def get_accounting_period(transaction_date: date) -> str:
@@ -32,175 +47,103 @@ async def list_transactions(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """List transactions with optional filters."""
-    query = (
-        db.table("transactions")
-        .select(
-            "*, accounts:accounts!transactions_account_id_fkey!inner(name), categories!inner(name, type), allowances!left(name), annual_budgets!left(name)"
-        )
-        .eq("user_id", current_user.id)
+    conditions = ["t.user_id = %s"]
+    params: list = [current_user.id]
+
+    for column, value in (
+        ("accounting_period", period),
+        ("account_id", account_id),
+        ("category_id", category_id),
+        ("allowance_id", allowance_id),
+        ("annual_budget_id", annual_budget_id),
+    ):
+        if value:
+            conditions.append(f"t.{column} = %s")
+            params.append(value)
+
+    rows = await fetch_all(
+        db,
+        f"{_TRANSACTION_SELECT} WHERE {' AND '.join(conditions)} "
+        "ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT %s OFFSET %s",
+        [*params, limit, offset],
     )
 
-    if period:
-        query = query.eq("accounting_period", period)
-    if account_id:
-        query = query.eq("account_id", account_id)
-    if category_id:
-        query = query.eq("category_id", category_id)
-    if allowance_id is not None:
-        query = query.eq("allowance_id", allowance_id)
-    if annual_budget_id is not None:
-        query = query.eq("annual_budget_id", annual_budget_id)
-
-    result = (
-        query.order("transaction_date", desc=True)
-        .range(offset, offset + limit - 1)
-        .execute()
-    )
-
-    transactions = []
-    for t in result.data:
-        transactions.append(
-            Transaction(
-                id=t["id"],
-                user_id=t["user_id"],
-                account_id=t["account_id"],
-                account_name=t["accounts"]["name"] if t.get("accounts") else None,
-                category_id=t["category_id"],
-                category_name=t["categories"]["name"] if t.get("categories") else None,
-                category_type=t["categories"]["type"] if t.get("categories") else None,
-                allowance_id=t["allowance_id"],
-                allowance_name=t["allowances"]["name"] if t.get("allowances") else None,
-                annual_budget_id=t["annual_budget_id"],
-                annual_budget_name=t["annual_budgets"]["name"] if t.get("annual_budgets") else None,
-                amount_original=t["amount_original"],
-                currency_original=t["currency_original"],
-                amount_base_eur=t["amount_base_eur"],
-                exchange_rate=t["exchange_rate"],
-                exchange_rate_source=t["exchange_rate_source"],
-                transaction_date=t["transaction_date"],
-                accounting_period=t["accounting_period"],
-                description=t["description"],
-                notes=t["notes"],
-                transfer_to_account_id=t["transfer_to_account_id"],
-                transfer_transaction_id=t["transfer_transaction_id"],
-                created_at=t["created_at"],
-                updated_at=t["updated_at"],
-            )
-        )
-
-    return transactions
+    return [Transaction(**t) for t in rows]
 
 
 @router.get("/{transaction_id}", response_model=Transaction)
 async def get_transaction(
     transaction_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get a specific transaction."""
-    result = (
-        db.table("transactions")
-        .select(
-            "*, accounts:accounts!transactions_account_id_fkey!inner(name), categories!inner(name, type), allowances!left(name), annual_budgets!left(name)"
-        )
-        .eq("id", transaction_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    row = await fetch_one(
+        db,
+        f"{_TRANSACTION_SELECT} WHERE t.id = %s AND t.user_id = %s",
+        [transaction_id, current_user.id],
     )
 
-    if not result.data:
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
 
-    t = result.data[0]
-    return Transaction(
-        id=t["id"],
-        user_id=t["user_id"],
-        account_id=t["account_id"],
-        account_name=t["accounts"]["name"] if t.get("accounts") else None,
-        category_id=t["category_id"],
-        category_name=t["categories"]["name"] if t.get("categories") else None,
-        category_type=t["categories"]["type"] if t.get("categories") else None,
-        allowance_id=t["allowance_id"],
-        allowance_name=t["allowances"]["name"] if t.get("allowances") else None,
-        annual_budget_id=t["annual_budget_id"],
-        annual_budget_name=t["annual_budgets"]["name"] if t.get("annual_budgets") else None,
-        amount_original=t["amount_original"],
-        currency_original=t["currency_original"],
-        amount_base_eur=t["amount_base_eur"],
-        exchange_rate=t["exchange_rate"],
-        exchange_rate_source=t["exchange_rate_source"],
-        transaction_date=t["transaction_date"],
-        accounting_period=t["accounting_period"],
-        description=t["description"],
-        notes=t["notes"],
-        transfer_to_account_id=t["transfer_to_account_id"],
-        transfer_transaction_id=t["transfer_transaction_id"],
-        created_at=t["created_at"],
-        updated_at=t["updated_at"],
-    )
+    return Transaction(**row)
 
 
 @router.post("", response_model=Transaction, status_code=status.HTTP_201_CREATED)
 async def create_transaction(
     transaction: TransactionCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create a new transaction."""
     # Verify account ownership
-    account = (
-        db.table("accounts")
-        .select("id, currency_code")
-        .eq("id", transaction.account_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    account = await fetch_one(
+        db,
+        "SELECT id, currency_code FROM accounts WHERE id = %s AND user_id = %s",
+        [transaction.account_id, current_user.id],
     )
-    if not account.data:
+    if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
         )
 
-    # Verify category exists
-    category = (
-        db.table("categories")
-        .select("id, type")
-        .eq("id", transaction.category_id)
-        .execute()
+    # Verify category is visible to the user
+    category = await fetch_one(
+        db,
+        "SELECT id, type FROM categories WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
+        [transaction.category_id, current_user.id],
     )
-    if not category.data:
+    if not category:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Category not found"
         )
 
     # Validate allowance ownership if provided
     if transaction.allowance_id:
-        allowance_check = (
-            db.table("allowances")
-            .select("id")
-            .eq("id", transaction.allowance_id)
-            .eq("user_id", current_user.id)
-            .execute()
+        allowance_check = await fetch_one(
+            db,
+            "SELECT id FROM allowances WHERE id = %s AND user_id = %s",
+            [transaction.allowance_id, current_user.id],
         )
-        if not allowance_check.data:
+        if not allowance_check:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Allowance not found"
             )
 
     # Validate annual budget ownership if provided
     if transaction.annual_budget_id:
-        ab_check = (
-            db.table("annual_budgets")
-            .select("id")
-            .eq("id", transaction.annual_budget_id)
-            .eq("user_id", current_user.id)
-            .execute()
+        ab_check = await fetch_one(
+            db,
+            "SELECT id FROM annual_budgets WHERE id = %s AND user_id = %s",
+            [transaction.annual_budget_id, current_user.id],
         )
-        if not ab_check.data:
+        if not ab_check:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
@@ -220,32 +163,28 @@ async def create_transaction(
         transaction.transaction_date
     )
 
-    data = {
-        "user_id": current_user.id,
-        "account_id": transaction.account_id,
-        "category_id": transaction.category_id,
-        "amount_original": transaction.amount_original,
-        "currency_original": transaction.currency_original,
-        "amount_base_eur": amount_eur,
-        "exchange_rate": rate,
-        "exchange_rate_source": source,
-        "transaction_date": transaction.transaction_date.isoformat(),
-        "accounting_period": accounting_period,
-        "description": transaction.description,
-        "notes": transaction.notes,
-        "allowance_id": transaction.allowance_id,
-        "annual_budget_id": transaction.annual_budget_id,
-    }
+    created = await insert(
+        db,
+        "transactions",
+        {
+            "user_id": current_user.id,
+            "account_id": transaction.account_id,
+            "category_id": transaction.category_id,
+            "amount_original": transaction.amount_original,
+            "currency_original": transaction.currency_original,
+            "amount_base_eur": amount_eur,
+            "exchange_rate": rate,
+            "exchange_rate_source": source,
+            "transaction_date": transaction.transaction_date,
+            "accounting_period": accounting_period,
+            "description": transaction.description,
+            "notes": transaction.notes,
+            "allowance_id": transaction.allowance_id,
+            "annual_budget_id": transaction.annual_budget_id,
+        },
+    )
 
-    result = db.table("transactions").insert(data).execute()
-
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to create transaction",
-        )
-
-    return await get_transaction(result.data[0]["id"], current_user, db)
+    return await get_transaction(created["id"], current_user, db)
 
 
 @router.patch("/{transaction_id}", response_model=Transaction)
@@ -253,18 +192,16 @@ async def update_transaction(
     transaction_id: str,
     transaction: TransactionUpdate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Update a transaction."""
     # Verify ownership
-    existing = (
-        db.table("transactions")
-        .select("*")
-        .eq("id", transaction_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    existing = await fetch_one(
+        db,
+        "SELECT * FROM transactions WHERE id = %s AND user_id = %s",
+        [transaction_id, current_user.id],
     )
-    if not existing.data:
+    if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
@@ -276,42 +213,34 @@ async def update_transaction(
         )
 
     # Validate allowance ownership if being changed
-    if "allowance_id" in update_data and update_data["allowance_id"] is not None:
-        allowance_check = (
-            db.table("allowances")
-            .select("id")
-            .eq("id", update_data["allowance_id"])
-            .eq("user_id", current_user.id)
-            .execute()
+    if update_data.get("allowance_id") is not None:
+        allowance_check = await fetch_one(
+            db,
+            "SELECT id FROM allowances WHERE id = %s AND user_id = %s",
+            [update_data["allowance_id"], current_user.id],
         )
-        if not allowance_check.data:
+        if not allowance_check:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Allowance not found"
             )
 
     # Validate annual budget ownership if being changed
-    if "annual_budget_id" in update_data and update_data["annual_budget_id"] is not None:
-        ab_check = (
-            db.table("annual_budgets")
-            .select("id")
-            .eq("id", update_data["annual_budget_id"])
-            .eq("user_id", current_user.id)
-            .execute()
+    if update_data.get("annual_budget_id") is not None:
+        ab_check = await fetch_one(
+            db,
+            "SELECT id FROM annual_budgets WHERE id = %s AND user_id = %s",
+            [update_data["annual_budget_id"], current_user.id],
         )
-        if not ab_check.data:
+        if not ab_check:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
 
-    # If amount or date changed, recalculate EUR conversion
+    # If amount or rate changed, recalculate EUR conversion
     if "amount_original" in update_data or "exchange_rate" in update_data:
-        amount = update_data.get("amount_original", existing.data[0]["amount_original"])
-        currency = existing.data[0]["currency_original"]
-        trans_date = update_data.get(
-            "transaction_date", existing.data[0]["transaction_date"]
-        )
-        if isinstance(trans_date, str):
-            trans_date = date.fromisoformat(trans_date)
+        amount = update_data.get("amount_original", existing["amount_original"])
+        currency = existing["currency_original"]
+        trans_date = update_data.get("transaction_date", existing["transaction_date"])
 
         amount_eur, rate, source = await convert_amount(
             amount,
@@ -325,20 +254,7 @@ async def update_transaction(
         update_data["exchange_rate"] = rate
         update_data["exchange_rate_source"] = source
 
-    if "transaction_date" in update_data and isinstance(
-        update_data["transaction_date"], date
-    ):
-        update_data["transaction_date"] = update_data["transaction_date"].isoformat()
-
-    result = (
-        db.table("transactions").update(update_data).eq("id", transaction_id).execute()
-    )
-
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to update transaction",
-        )
+    await update(db, "transactions", update_data, {"id": transaction_id})
 
     return await get_transaction(transaction_id, current_user, db)
 
@@ -347,23 +263,20 @@ async def update_transaction(
 async def delete_transaction(
     transaction_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Delete a transaction."""
-    # Verify ownership
-    existing = (
-        db.table("transactions")
-        .select("id")
-        .eq("id", transaction_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    existing = await fetch_one(
+        db,
+        "SELECT id FROM transactions WHERE id = %s AND user_id = %s",
+        [transaction_id, current_user.id],
     )
-    if not existing.data:
+    if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
 
-    db.table("transactions").delete().eq("id", transaction_id).execute()
+    await execute(db, "DELETE FROM transactions WHERE id = %s", [transaction_id])
 
 
 @router.post(
@@ -372,50 +285,44 @@ async def delete_transaction(
 async def create_transfer(
     transfer: TransferCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create a transfer between accounts."""
     # Verify both accounts exist and belong to user
-    from_account = (
-        db.table("accounts")
-        .select("*")
-        .eq("id", transfer.from_account_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    from_account = await fetch_one(
+        db,
+        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
+        [transfer.from_account_id, current_user.id],
     )
-    to_account = (
-        db.table("accounts")
-        .select("*")
-        .eq("id", transfer.to_account_id)
-        .eq("user_id", current_user.id)
-        .execute()
+    to_account = await fetch_one(
+        db,
+        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
+        [transfer.to_account_id, current_user.id],
     )
 
-    if not from_account.data:
+    if not from_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Source account not found"
         )
-    if not to_account.data:
+    if not to_account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Destination account not found",
         )
 
     # Get transfer category
-    transfer_category = (
-        db.table("categories")
-        .select("id")
-        .eq("name", "Transfer")
-        .eq("type", "transfer")
-        .execute()
+    transfer_category = await fetch_one(
+        db,
+        "SELECT id FROM categories WHERE name = 'Transfer' AND type = 'transfer' "
+        "AND user_id IS NULL LIMIT 1",
     )
-    if not transfer_category.data:
+    if not transfer_category:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Transfer category not found",
         )
 
-    category_id = transfer_category.data[0]["id"]
+    category_id = transfer_category["id"]
 
     # Convert to EUR
     amount_eur, rate, source = await convert_amount(
@@ -424,28 +331,8 @@ async def create_transfer(
 
     accounting_period = get_accounting_period(transfer.transaction_date)
 
-    # Create outgoing transaction (from account)
-    outgoing_data = {
-        "user_id": current_user.id,
-        "account_id": transfer.from_account_id,
-        "category_id": category_id,
-        "amount_original": -abs(transfer.amount),
-        "currency_original": transfer.currency,
-        "amount_base_eur": -abs(amount_eur),
-        "exchange_rate": rate,
-        "exchange_rate_source": source,
-        "transaction_date": transfer.transaction_date.isoformat(),
-        "accounting_period": accounting_period,
-        "description": transfer.description
-        or f"Transfer to {to_account.data[0]['name']}",
-        "transfer_to_account_id": transfer.to_account_id,
-    }
-
-    outgoing = db.table("transactions").insert(outgoing_data).execute()
-
-    # Create incoming transaction (to account)
     # Convert amount to destination currency if different
-    to_currency = to_account.data[0]["currency_code"]
+    to_currency = to_account["currency_code"]
     if to_currency != transfer.currency:
         to_amount, _, _ = await convert_amount(
             transfer.amount,
@@ -457,27 +344,55 @@ async def create_transfer(
     else:
         to_amount = transfer.amount
 
-    incoming_data = {
-        "user_id": current_user.id,
-        "account_id": transfer.to_account_id,
-        "category_id": category_id,
-        "amount_original": abs(to_amount),
-        "currency_original": to_currency,
-        "amount_base_eur": abs(amount_eur),
-        "exchange_rate": rate,
-        "exchange_rate_source": source,
-        "transaction_date": transfer.transaction_date.isoformat(),
-        "accounting_period": accounting_period,
-        "description": transfer.description
-        or f"Transfer from {from_account.data[0]['name']}",
-        "transfer_transaction_id": outgoing.data[0]["id"],
-    }
+    async with db.transaction():
+        # Outgoing transaction (from account)
+        outgoing = await insert(
+            db,
+            "transactions",
+            {
+                "user_id": current_user.id,
+                "account_id": transfer.from_account_id,
+                "category_id": category_id,
+                "amount_original": -abs(transfer.amount),
+                "currency_original": transfer.currency,
+                "amount_base_eur": -abs(amount_eur),
+                "exchange_rate": rate,
+                "exchange_rate_source": source,
+                "transaction_date": transfer.transaction_date,
+                "accounting_period": accounting_period,
+                "description": transfer.description
+                or f"Transfer to {to_account['name']}",
+                "transfer_to_account_id": transfer.to_account_id,
+            },
+        )
 
-    incoming = db.table("transactions").insert(incoming_data).execute()
+        # Incoming transaction (to account)
+        incoming = await insert(
+            db,
+            "transactions",
+            {
+                "user_id": current_user.id,
+                "account_id": transfer.to_account_id,
+                "category_id": category_id,
+                "amount_original": abs(to_amount),
+                "currency_original": to_currency,
+                "amount_base_eur": abs(amount_eur),
+                "exchange_rate": rate,
+                "exchange_rate_source": source,
+                "transaction_date": transfer.transaction_date,
+                "accounting_period": accounting_period,
+                "description": transfer.description
+                or f"Transfer from {from_account['name']}",
+                "transfer_transaction_id": outgoing["id"],
+            },
+        )
 
-    # Link the outgoing transaction to incoming
-    db.table("transactions").update(
-        {"transfer_transaction_id": incoming.data[0]["id"]}
-    ).eq("id", outgoing.data[0]["id"]).execute()
+        # Link the outgoing transaction to incoming
+        await update(
+            db,
+            "transactions",
+            {"transfer_transaction_id": incoming["id"]},
+            {"id": outgoing["id"]},
+        )
 
-    return await get_transaction(outgoing.data[0]["id"], current_user, db)
+    return await get_transaction(outgoing["id"], current_user, db)

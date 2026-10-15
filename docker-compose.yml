@@ -1,6 +1,35 @@
 version: '3.8'
 
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-nomad}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-nomad}
+      - POSTGRES_DB=${POSTGRES_DB:-nomad_ledger}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    entrypoint: ["python", "db/migrate.py"]
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-nomad}:${POSTGRES_PASSWORD:-nomad}@db:5432/${POSTGRES_DB:-nomad_ledger}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
   api:
     build:
       context: ./apps/api
@@ -8,8 +37,12 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-nomad}:${POSTGRES_PASSWORD:-nomad}@db:5432/${POSTGRES_DB:-nomad_ledger}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
 
   web:
@@ -23,3 +56,6 @@ services:
       - api
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+
+volumes:
+  db-data:

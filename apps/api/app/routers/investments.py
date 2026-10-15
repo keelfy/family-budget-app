@@ -1,14 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-from supabase import Client
+from psycopg import AsyncConnection
+from app.db import fetch_all, fetch_one, insert, update
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import Investment, InvestmentCreate, InvestmentTransaction, DividendInput
 from app.services.currency_service import get_exchange_rate, convert_amount
 
 router = APIRouter()
 
+_INVESTMENT_SELECT = """
+    SELECT i.*, a.name AS account_name
+    FROM investments i
+    JOIN accounts a ON a.id = i.account_id
+"""
 
-async def calculate_investment_values(investment: dict, db: Client) -> dict:
+
+async def calculate_investment_values(investment: dict, db: AsyncConnection) -> dict:
     """Calculate current value and unrealized gain/loss."""
     current_value_eur = None
     unrealized_gain_loss = None
@@ -37,103 +44,68 @@ async def calculate_investment_values(investment: dict, db: Client) -> dict:
 @router.get("", response_model=List[Investment])
 async def list_investments(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """List all investments for the current user."""
-    result = db.table("investments").select(
-        "*, accounts!inner(name)"
-    ).eq("user_id", current_user.id).order("asset_name").execute()
+    rows = await fetch_all(
+        db,
+        f"{_INVESTMENT_SELECT} WHERE i.user_id = %s ORDER BY i.asset_name",
+        [current_user.id],
+    )
 
-    investments = []
-    for inv in result.data:
-        values = await calculate_investment_values(inv, db)
-        investments.append(Investment(
-            id=inv["id"],
-            user_id=inv["user_id"],
-            account_id=inv["account_id"],
-            account_name=inv["accounts"]["name"] if inv.get("accounts") else None,
-            asset_name=inv["asset_name"],
-            ticker=inv["ticker"],
-            asset_type=inv["asset_type"],
-            quantity=inv["quantity"],
-            cost_basis=inv["cost_basis"],
-            average_cost_per_unit=inv["average_cost_per_unit"],
-            current_price=inv["current_price"],
-            current_price_currency=inv["current_price_currency"],
-            current_value_eur=values["current_value_eur"],
-            unrealized_gain_loss=values["unrealized_gain_loss"],
-            price_updated_at=inv["price_updated_at"],
-            created_at=inv["created_at"],
-            updated_at=inv["updated_at"],
-        ))
-
-    return investments
+    return [
+        Investment(**inv, **await calculate_investment_values(inv, db)) for inv in rows
+    ]
 
 
 @router.get("/{investment_id}", response_model=Investment)
 async def get_investment(
     investment_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get a specific investment."""
-    result = db.table("investments").select(
-        "*, accounts!inner(name)"
-    ).eq("id", investment_id).eq("user_id", current_user.id).execute()
+    inv = await fetch_one(
+        db,
+        f"{_INVESTMENT_SELECT} WHERE i.id = %s AND i.user_id = %s",
+        [investment_id, current_user.id],
+    )
 
-    if not result.data:
+    if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
 
-    inv = result.data[0]
-    values = await calculate_investment_values(inv, db)
-
-    return Investment(
-        id=inv["id"],
-        user_id=inv["user_id"],
-        account_id=inv["account_id"],
-        account_name=inv["accounts"]["name"] if inv.get("accounts") else None,
-        asset_name=inv["asset_name"],
-        ticker=inv["ticker"],
-        asset_type=inv["asset_type"],
-        quantity=inv["quantity"],
-        cost_basis=inv["cost_basis"],
-        average_cost_per_unit=inv["average_cost_per_unit"],
-        current_price=inv["current_price"],
-        current_price_currency=inv["current_price_currency"],
-        current_value_eur=values["current_value_eur"],
-        unrealized_gain_loss=values["unrealized_gain_loss"],
-        price_updated_at=inv["price_updated_at"],
-        created_at=inv["created_at"],
-        updated_at=inv["updated_at"],
-    )
+    return Investment(**inv, **await calculate_investment_values(inv, db))
 
 
 @router.post("", response_model=Investment, status_code=status.HTTP_201_CREATED)
 async def create_investment(
     investment: InvestmentCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create a new investment."""
     # Verify account ownership
-    account = db.table("accounts").select("id").eq("id", investment.account_id).eq("user_id", current_user.id).execute()
-    if not account.data:
+    account = await fetch_one(
+        db,
+        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
+        [investment.account_id, current_user.id],
+    )
+    if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    data = {
-        "user_id": current_user.id,
-        "account_id": investment.account_id,
-        "asset_name": investment.asset_name,
-        "ticker": investment.ticker,
-        "asset_type": investment.asset_type,
-    }
+    created = await insert(
+        db,
+        "investments",
+        {
+            "user_id": current_user.id,
+            "account_id": investment.account_id,
+            "asset_name": investment.asset_name,
+            "ticker": investment.ticker,
+            "asset_type": investment.asset_type,
+        },
+    )
 
-    result = db.table("investments").insert(data).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create investment")
-
-    return await get_investment(result.data[0]["id"], current_user, db)
+    return await get_investment(created["id"], current_user, db)
 
 
 @router.post("/{investment_id}/buy", response_model=Investment)
@@ -141,15 +113,17 @@ async def buy_investment(
     investment_id: str,
     transaction: InvestmentTransaction,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Record a buy transaction for an investment."""
     # Verify ownership
-    existing = db.table("investments").select("*").eq("id", investment_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    inv = await fetch_one(
+        db,
+        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
+        [investment_id, current_user.id],
+    )
+    if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
-
-    inv = existing.data[0]
 
     # Calculate new values
     total_cost = transaction.quantity * transaction.price_per_unit
@@ -161,25 +135,32 @@ async def buy_investment(
     new_cost_basis = inv["cost_basis"] + total_cost_eur
     new_avg_cost = new_cost_basis / new_quantity if new_quantity > 0 else 0
 
-    # Update investment
-    update_data = {
-        "quantity": new_quantity,
-        "cost_basis": new_cost_basis,
-        "average_cost_per_unit": new_avg_cost,
-    }
+    async with db.transaction():
+        await update(
+            db,
+            "investments",
+            {
+                "quantity": new_quantity,
+                "cost_basis": new_cost_basis,
+                "average_cost_per_unit": new_avg_cost,
+            },
+            {"id": investment_id},
+        )
 
-    db.table("investments").update(update_data).eq("id", investment_id).execute()
-
-    # Record investment transaction
-    db.table("investment_transactions").insert({
-        "investment_id": investment_id,
-        "type": "buy",
-        "quantity": transaction.quantity,
-        "price_per_unit": transaction.price_per_unit,
-        "currency": transaction.currency,
-        "total_amount": total_cost,
-        "transaction_date": transaction.transaction_date.isoformat(),
-    }).execute()
+        # Record investment transaction
+        await insert(
+            db,
+            "investment_transactions",
+            {
+                "investment_id": investment_id,
+                "type": "buy",
+                "quantity": transaction.quantity,
+                "price_per_unit": transaction.price_per_unit,
+                "currency": transaction.currency,
+                "total_amount": total_cost,
+                "transaction_date": transaction.transaction_date,
+            },
+        )
 
     return await get_investment(investment_id, current_user, db)
 
@@ -189,15 +170,17 @@ async def sell_investment(
     investment_id: str,
     transaction: InvestmentTransaction,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Record a sell transaction for an investment."""
     # Verify ownership
-    existing = db.table("investments").select("*").eq("id", investment_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    inv = await fetch_one(
+        db,
+        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
+        [investment_id, current_user.id],
+    )
+    if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
-
-    inv = existing.data[0]
 
     if transaction.quantity > inv["quantity"]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot sell more than owned quantity")
@@ -213,25 +196,32 @@ async def sell_investment(
     new_cost_basis = inv["cost_basis"] - cost_reduction
     new_avg_cost = new_cost_basis / new_quantity if new_quantity > 0 else 0
 
-    # Update investment
-    update_data = {
-        "quantity": new_quantity,
-        "cost_basis": new_cost_basis,
-        "average_cost_per_unit": new_avg_cost,
-    }
+    async with db.transaction():
+        await update(
+            db,
+            "investments",
+            {
+                "quantity": new_quantity,
+                "cost_basis": new_cost_basis,
+                "average_cost_per_unit": new_avg_cost,
+            },
+            {"id": investment_id},
+        )
 
-    db.table("investments").update(update_data).eq("id", investment_id).execute()
-
-    # Record investment transaction
-    db.table("investment_transactions").insert({
-        "investment_id": investment_id,
-        "type": "sell",
-        "quantity": transaction.quantity,
-        "price_per_unit": transaction.price_per_unit,
-        "currency": transaction.currency,
-        "total_amount": total_proceeds,
-        "transaction_date": transaction.transaction_date.isoformat(),
-    }).execute()
+        # Record investment transaction
+        await insert(
+            db,
+            "investment_transactions",
+            {
+                "investment_id": investment_id,
+                "type": "sell",
+                "quantity": transaction.quantity,
+                "price_per_unit": transaction.price_per_unit,
+                "currency": transaction.currency,
+                "total_amount": total_proceeds,
+                "transaction_date": transaction.transaction_date,
+            },
+        )
 
     return await get_investment(investment_id, current_user, db)
 
@@ -241,23 +231,31 @@ async def record_dividend(
     investment_id: str,
     dividend: DividendInput,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Record a dividend payment for an investment."""
     # Verify ownership
-    existing = db.table("investments").select("*").eq("id", investment_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    inv = await fetch_one(
+        db,
+        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
+        [investment_id, current_user.id],
+    )
+    if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
 
     # Record dividend transaction
-    db.table("investment_transactions").insert({
-        "investment_id": investment_id,
-        "type": "dividend",
-        "price_per_unit": dividend.amount,
-        "currency": dividend.currency,
-        "total_amount": dividend.amount,
-        "transaction_date": dividend.transaction_date.isoformat(),
-    }).execute()
+    await insert(
+        db,
+        "investment_transactions",
+        {
+            "investment_id": investment_id,
+            "type": "dividend",
+            "price_per_unit": dividend.amount,
+            "currency": dividend.currency,
+            "total_amount": dividend.amount,
+            "transaction_date": dividend.transaction_date,
+        },
+    )
 
     return {"message": "Dividend recorded successfully"}
 
@@ -265,7 +263,7 @@ async def record_dividend(
 @router.post("/refresh-prices")
 async def refresh_prices(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """
     Refresh prices for all investments.

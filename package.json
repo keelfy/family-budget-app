@@ -13,8 +13,9 @@
     "type-check": "turbo type-check",
     "dev:web": "turbo dev --filter=web",
     "dev:api": "cd apps/api && uv run fastapi dev",
-    "db:migrate": "cd supabase && supabase db push",
-    "db:reset": "cd supabase && supabase db reset"
+    "db:up": "docker compose up -d db",
+    "db:migrate": "docker compose run --rm migrate",
+    "db:reset": "docker compose down -v && docker compose up -d db migrate"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

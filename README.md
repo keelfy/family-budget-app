@@ -20,8 +20,8 @@ Personal finance web application with multi-currency support, monthly & annual b
 |-------|-----------|
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui, TanStack Query, React Hook Form + Zod |
 | Backend | FastAPI (Python 3.14+), Pydantic v2, uvicorn |
-| Database | Supabase (PostgreSQL with Row Level Security) |
-| Auth | Supabase Auth (JWT, ES256 verification) |
+| Database | PostgreSQL 16 (psycopg 3) |
+| Auth | HTTP Basic (email + password, bcrypt hashes in `users`) |
 | Charts | Recharts |
 | Icons | Lucide React |
 | Monorepo | Turborepo |
@@ -54,34 +54,35 @@ nomad-ledger/
 │   │   └── lib/
 │   │       ├── api.ts                # Typed API client + interfaces
 │   │       ├── utils.ts              # Formatting helpers
-│   │       └── supabase/             # Supabase client (browser + server)
+│   │       └── auth.ts               # Basic-auth credential cookie helpers
 │   │
 │   └── api/                          # FastAPI backend
-│       └── app/
-│           ├── main.py               # App entry, CORS, router registration
-│           ├── dependencies.py       # Auth (JWT) + DB dependencies
-│           ├── models/               # Pydantic schemas per domain
-│           ├── routers/              # API route handlers
-│           │   ├── accounts.py
-│           │   ├── transactions.py
-│           │   ├── categories.py
-│           │   ├── budgets.py
-│           │   ├── allowances.py
-│           │   ├── annual_budgets.py
-│           │   ├── investments.py
-│           │   ├── exchange_rates.py
-│           │   └── reports.py
-│           └── services/
-│               └── exchange_rate.py  # Frankfurter API + caching
+│       ├── app/
+│       │   ├── main.py               # App entry, CORS, router registration
+│       │   ├── dependencies.py       # Basic-auth user + DB dependencies
+│       │   ├── security.py           # Password hashing
+│       │   ├── db/                   # PostgreSQL pool + query helpers
+│       │   ├── models/               # Pydantic schemas per domain
+│       │   ├── routers/              # API route handlers
+│       │   │   ├── auth.py
+│       │   │   ├── accounts.py
+│       │   │   ├── transactions.py
+│       │   │   ├── categories.py
+│       │   │   ├── budgets.py
+│       │   │   ├── allowances.py
+│       │   │   ├── annual_budgets.py
+│       │   │   ├── investments.py
+│       │   │   ├── exchange_rates.py
+│       │   │   └── reports.py
+│       │   └── services/
+│       │       └── exchange_rate.py  # Frankfurter API + caching
+│       └── db/
+│           ├── migrate.py            # Migration runner (docker `migrate` service)
+│           └── migrations/
+│               └── 001_schema.sql    # Tables, triggers, system categories
 │
-├── packages/
-│   └── shared/                       # Shared TypeScript types
-│
-└── supabase/
-    └── migrations/
-        ├── 001_initial_schema.sql    # Core tables, RLS, triggers, system categories
-        ├── 002_named_allowances.sql  # Multi-allowance support
-        └── 003_annual_budgets.sql    # Annual budgets table + FK
+└── packages/
+    └── shared/                       # Shared TypeScript types
 ```
 
 ## Getting Started
@@ -90,7 +91,7 @@ nomad-ledger/
 
 - Node.js 18+
 - Python 3.14+ (with [uv](https://docs.astral.sh/uv/) recommended)
-- Supabase account ([supabase.com](https://supabase.com))
+- PostgreSQL 13+ (or Docker — `docker-compose.yml` ships a `db` service)
 
 ### 1. Clone & Install
 
@@ -100,30 +101,32 @@ cd nomad-ledger
 npm install
 ```
 
-### 2. Set Up Supabase
+### 2. Set Up PostgreSQL
 
-1. Create a new Supabase project
-2. Run migrations in order in the SQL Editor:
-   - `supabase/migrations/001_initial_schema.sql`
-   - `supabase/migrations/002_named_allowances.sql`
-   - `supabase/migrations/003_annual_budgets.sql`
-3. Copy your project URL, anon key, service role key, and JWT secret from **Settings → API**
+Using Docker:
+
+```bash
+npm run db:up        # start PostgreSQL
+npm run db:migrate   # apply pending migrations (one-shot `migrate` service)
+```
+
+Migrations live in `apps/api/db/migrations/*.sql` and are applied in file-name order by
+`apps/api/db/migrate.py`, which records them in the `schema_migrations` table. With your own
+PostgreSQL run it directly: `cd apps/api && DATABASE_URL=... uv run python db/migrate.py`.
+`docker compose up` runs the `migrate` service automatically before the API starts.
+Add a schema change as a new file, e.g. `002_add_something.sql`.
 
 ### 3. Configure Environment
 
 **Frontend** — `apps/web/.env.local`:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 **Backend** — `apps/api/.env`:
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-JWT_SECRET=your-supabase-jwt-secret
+DATABASE_URL=postgresql://nomad:nomad@localhost:5432/nomad_ledger
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ### 4. Install Python Dependencies
@@ -245,8 +248,9 @@ See [apps/web/README.md](apps/web/README.md) for frontend architecture, pages, a
 | `npm run build` | Build all apps |
 | `npm run lint` | Lint all apps |
 | `npm run type-check` | TypeScript type checking |
-| `npm run db:migrate` | Run pending Supabase migrations |
-| `npm run db:reset` | Reset database |
+| `npm run db:up` | Start the local PostgreSQL container |
+| `npm run db:migrate` | Apply pending SQL migrations |
+| `npm run db:reset` | Drop the local database volume and recreate it |
 
 ## License
 

@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PiggyBank } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { login } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -39,7 +39,6 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const supabase = createClient();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -52,27 +51,16 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
-
-      if (error) {
-        toast({
-          variant: 'destructive',
-          title: 'Login failed',
-          description: error.message,
-        });
-        return;
-      }
+      await login(data.email, data.password);
 
       router.push('/dashboard');
       router.refresh();
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'An unexpected error occurred',
+        title: 'Login failed',
+        description:
+          error instanceof Error ? error.message : 'An unexpected error occurred',
       });
     } finally {
       setIsLoading(false);

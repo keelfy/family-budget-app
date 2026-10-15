@@ -1,7 +1,14 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+import psycopg
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
 from app.config import get_settings
+from app.db import pool
 from app.routers import (
+    auth,
     accounts,
     transactions,
     categories,
@@ -15,10 +22,21 @@ from app.routers import (
 
 settings = get_settings()
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await pool.open()
+    try:
+        yield
+    finally:
+        await pool.close()
+
+
 app = FastAPI(
     title=settings.app_name,
     description="Personal finance API with multi-currency support",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -30,7 +48,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(psycopg.errors.DataError)
+async def data_error_handler(_: Request, __: psycopg.errors.DataError):
+    # e.g. malformed UUID in a path or query parameter
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST, content={"detail": "Invalid input"}
+    )
+
+
+@app.exception_handler(psycopg.errors.IntegrityError)
+async def integrity_error_handler(_: Request, __: psycopg.errors.IntegrityError):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": "Request violates a data constraint"},
+    )
+
+
 # Include routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["Accounts"])
 app.include_router(transactions.router, prefix="/api/v1/transactions", tags=["Transactions"])
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["Categories"])

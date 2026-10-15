@@ -17,8 +17,6 @@ Available at `http://localhost:3000`.
 
 Environment variables (`.env.local`):
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
@@ -55,11 +53,11 @@ app/
 
 ### Authentication Flow
 
-1. User logs in via `/login` using Supabase Auth (email + password)
-2. Supabase returns a session with an access token (JWT)
-3. The dashboard layout (`(dashboard)/layout.tsx`) checks for an active session via `supabase.auth.getUser()` on the server side
-4. If no session, the user is redirected to `/login`
-5. All API calls include the JWT as a Bearer token via the `getAuthHeaders()` helper in `lib/api.ts`
+1. User logs in via `/login` (email + password); `login()` in `lib/api.ts` validates them with `GET /api/v1/auth/me`
+2. On success the base64 `email:password` pair is stored in the `nl_auth` cookie (`lib/auth.ts`, `SameSite=Strict`, 30 days)
+3. `middleware.ts` redirects to `/login` when the cookie is missing on `/dashboard/*`, and away from `/login`/`/register` when present
+4. All API calls send `Authorization: Basic <cookie value>` via `getAuthHeaders()` in `lib/api.ts`
+5. A `401` from the API clears the cookie and redirects to `/login`; sign out just clears the cookie
 
 ### Data Fetching
 
@@ -268,14 +266,13 @@ All hooks are in the `hooks/` directory and follow a consistent pattern using Ta
 
 | Function | Description |
 |----------|-------------|
-| `getAuthHeaders()` | Get Authorization + Content-Type headers with current JWT |
+| `getAuthHeaders()` | Get Authorization (Basic) + Content-Type headers |
 | `api<T>(endpoint, options)` | Base fetch wrapper with auth, JSON, and error handling |
+| `login(email, password)` | Validate credentials and store them in the auth cookie |
+| `register(email, password, displayName)` | Create an account |
 
-### `lib/supabase/client.ts`
-Browser-side Supabase client using `@supabase/ssr`.
-
-### `lib/supabase/server.ts`
-Server-side Supabase client for use in Server Components and Route Handlers.
+### `lib/auth.ts`
+Helpers for the `nl_auth` cookie holding the Basic credentials (`encodeCredentials`, `getAuthToken`, `setAuthToken`, `clearAuthToken`).
 
 ---
 
@@ -306,8 +303,6 @@ Server-side Supabase client for use in Server Components and Route Handlers.
 | `react-hook-form` | 7.x | Form state management |
 | `@hookform/resolvers` | 3.x | Zod resolver for react-hook-form |
 | `zod` | 3.x | Schema validation |
-| `@supabase/ssr` | latest | Supabase client for SSR |
-| `@supabase/supabase-js` | 2.x | Supabase JavaScript client |
 | `next-themes` | latest | Theme switching (light/dark/system) |
 | `recharts` | 2.x | Charting library |
 | `lucide-react` | latest | Icon library |

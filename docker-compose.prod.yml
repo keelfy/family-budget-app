@@ -1,6 +1,33 @@
 version: "3.8"
 
 services:
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - ./.env
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  migrate:
+    image: ghcr.io/keelfy/family-budget-app/api:latest
+    entrypoint: ["python", "db/migrate.py"]
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app-network
+
   api:
     image: ghcr.io/keelfy/family-budget-app/api:latest
     env_file:
@@ -8,6 +35,9 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks:
       - app-network
 
@@ -22,6 +52,9 @@ services:
       - api
     networks:
       - app-network
+
+volumes:
+  db-data:
 
 networks:
   app-network:

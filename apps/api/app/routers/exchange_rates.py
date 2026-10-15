@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import Optional
 from datetime import date
-from supabase import Client
+from psycopg import AsyncConnection
+from app.db import fetch_one
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import ExchangeRate, ExchangeRateCreate
-from app.services.currency_service import get_exchange_rate as fetch_rate
+from app.services.currency_service import get_exchange_rate as fetch_rate, save_exchange_rate
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ async def get_exchange_rate(
     to_currency: str = Query(..., alias="to"),
     rate_date: Optional[date] = Query(None, alias="date"),
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get exchange rate between two currencies."""
     if rate_date is None:
@@ -36,12 +37,14 @@ async def get_exchange_rate(
         rate = await fetch_rate(from_currency, to_currency, rate_date, db)
 
         # Check if we have it in DB
-        result = db.table("exchange_rates").select("*").eq(
-            "from_currency", from_currency
-        ).eq("to_currency", to_currency).eq("rate_date", rate_date.isoformat()).execute()
+        stored = await fetch_one(
+            db,
+            "SELECT * FROM exchange_rates WHERE from_currency = %s AND to_currency = %s AND rate_date = %s",
+            [from_currency, to_currency, rate_date],
+        )
 
-        if result.data:
-            return ExchangeRate(**result.data[0])
+        if stored:
+            return ExchangeRate(**stored)
 
         return ExchangeRate(
             id="fetched",
@@ -64,20 +67,16 @@ async def get_exchange_rate(
 async def create_exchange_rate(
     rate_data: ExchangeRateCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create or update a manual exchange rate."""
-    data = {
-        "from_currency": rate_data.from_currency,
-        "to_currency": rate_data.to_currency,
-        "rate": rate_data.rate,
-        "rate_date": rate_data.rate_date.isoformat(),
-        "source": "manual",
-    }
+    row = await save_exchange_rate(
+        db,
+        rate_data.from_currency,
+        rate_data.to_currency,
+        rate_data.rate,
+        rate_data.rate_date,
+        "manual",
+    )
 
-    result = db.table("exchange_rates").upsert(data).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create exchange rate")
-
-    return ExchangeRate(**result.data[0])
+    return ExchangeRate(**row)

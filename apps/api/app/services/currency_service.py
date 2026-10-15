@@ -1,9 +1,9 @@
 import httpx
 from datetime import date, timedelta
 from typing import Optional, Dict
-from functools import lru_cache
-from supabase import Client
+from psycopg import AsyncConnection
 from app.config import get_settings
+from app.db import Row, fetch_one
 
 settings = get_settings()
 
@@ -15,7 +15,7 @@ async def get_exchange_rate(
     from_currency: str,
     to_currency: str,
     rate_date: Optional[date] = None,
-    db: Optional[Client] = None,
+    db: Optional[AsyncConnection] = None,
 ) -> float:
     """
     Get exchange rate with three-tier caching:
@@ -42,12 +42,15 @@ async def get_exchange_rate(
 
     # Check database cache
     if db:
-        result = db.table("exchange_rates").select("rate").eq(
-            "from_currency", from_currency
-        ).eq("to_currency", to_currency).eq("rate_date", rate_date.isoformat()).execute()
+        row = await fetch_one(
+            db,
+            "SELECT rate FROM exchange_rates "
+            "WHERE from_currency = %s AND to_currency = %s AND rate_date = %s",
+            [from_currency, to_currency, rate_date],
+        )
 
-        if result.data:
-            rate = float(result.data[0]["rate"])
+        if row:
+            rate = float(row["rate"])
             _rate_cache[cache_key] = (rate, date.today())
             return rate
 
@@ -57,13 +60,9 @@ async def get_exchange_rate(
 
         # Store in database
         if db:
-            db.table("exchange_rates").upsert({
-                "from_currency": from_currency,
-                "to_currency": to_currency,
-                "rate": rate,
-                "rate_date": rate_date.isoformat(),
-                "source": "frankfurter",
-            }).execute()
+            await save_exchange_rate(
+                db, from_currency, to_currency, rate, rate_date, "frankfurter"
+            )
 
         # Store in memory cache
         _rate_cache[cache_key] = (rate, date.today())
@@ -72,14 +71,40 @@ async def get_exchange_rate(
     except Exception as e:
         # Fallback: try to get the most recent rate from database
         if db:
-            result = db.table("exchange_rates").select("rate").eq(
-                "from_currency", from_currency
-            ).eq("to_currency", to_currency).order("rate_date", desc=True).limit(1).execute()
+            row = await fetch_one(
+                db,
+                "SELECT rate FROM exchange_rates "
+                "WHERE from_currency = %s AND to_currency = %s "
+                "ORDER BY rate_date DESC LIMIT 1",
+                [from_currency, to_currency],
+            )
 
-            if result.data:
-                return float(result.data[0]["rate"])
+            if row:
+                return float(row["rate"])
 
         raise Exception(f"Could not get exchange rate: {e}")
+
+
+async def save_exchange_rate(
+    db: AsyncConnection,
+    from_currency: str,
+    to_currency: str,
+    rate: float,
+    rate_date: date,
+    source: str,
+) -> Row:
+    """Insert or update the stored rate for a currency pair and date."""
+    row = await fetch_one(
+        db,
+        "INSERT INTO exchange_rates (from_currency, to_currency, rate, rate_date, source) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "ON CONFLICT (from_currency, to_currency, rate_date) "
+        "DO UPDATE SET rate = EXCLUDED.rate, source = EXCLUDED.source "
+        "RETURNING *",
+        [from_currency, to_currency, rate, rate_date, source],
+    )
+    assert row is not None
+    return row
 
 
 async def fetch_rate_from_api(
@@ -112,7 +137,7 @@ async def convert_amount(
     from_currency: str,
     to_currency: str,
     rate_date: Optional[date] = None,
-    db: Optional[Client] = None,
+    db: Optional[AsyncConnection] = None,
     manual_rate: Optional[float] = None,
 ) -> tuple[float, float, str]:
     """

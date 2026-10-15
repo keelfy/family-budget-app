@@ -30,6 +30,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy the application code
 COPY app ./app
+COPY db ./db
 
 EXPOSE 8000
 CMD ["fastapi", "run", "app/main.py", "--port", "8000", "--host", "0.0.0.0"]

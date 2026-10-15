@@ -43,6 +43,11 @@ from app.models.exchange_rate import (
     ExchangeRate,
     ExchangeRateCreate,
 )
+from app.models.user import (
+    User,
+    UserRegister,
+    PasswordChange,
+)
 from app.models.report import (
     DashboardReport,
     NetWorthReport,
@@ -82,4 +87,7 @@ __all__ = [
     "DashboardReport",
     "NetWorthReport",
     "CashFlowReport",
+    "User",
+    "UserRegister",
+    "PasswordChange",
 ]

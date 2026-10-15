@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
 from datetime import date
-from supabase import Client
+from psycopg import AsyncConnection
+from app.db import fetch_all
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import DashboardReport, NetWorthReport, CashFlowReport, AccountBalance
 from app.models.report import CategoryAmount
@@ -17,16 +18,20 @@ def get_current_period() -> str:
 @router.get("/dashboard", response_model=DashboardReport)
 async def get_dashboard_report(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get dashboard summary report."""
     period = get_current_period()
 
     # Get total balance across all accounts
-    accounts = db.table("accounts").select("*").eq("user_id", current_user.id).eq("is_active", True).execute()
+    accounts = await fetch_all(
+        db,
+        "SELECT * FROM accounts WHERE user_id = %s AND is_active",
+        [current_user.id],
+    )
 
     total_balance_eur = 0
-    for acc in accounts.data:
+    for acc in accounts:
         if acc["currency_code"] == "EUR":
             total_balance_eur += acc["current_balance"]
         else:
@@ -36,20 +41,19 @@ async def get_dashboard_report(
             except Exception:
                 total_balance_eur += acc["current_balance"]
 
-    # Get monthly transactions
-    transactions = db.table("transactions").select(
-        "amount_base_eur, categories!inner(type)"
-    ).eq("user_id", current_user.id).eq("accounting_period", period).execute()
+    # Get monthly totals by category type
+    totals = await fetch_all(
+        db,
+        "SELECT c.type, SUM(ABS(t.amount_base_eur)) AS total "
+        "FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.user_id = %s AND t.accounting_period = %s "
+        "GROUP BY c.type",
+        [current_user.id, period],
+    )
+    by_type = {row["type"]: row["total"] for row in totals}
 
-    monthly_income = 0
-    monthly_expenses = 0
-
-    for t in transactions.data:
-        cat_type = t["categories"]["type"] if t.get("categories") else None
-        if cat_type == "income":
-            monthly_income += abs(t["amount_base_eur"])
-        elif cat_type == "expense":
-            monthly_expenses += abs(t["amount_base_eur"])
+    monthly_income = by_type.get("income", 0)
+    monthly_expenses = by_type.get("expense", 0)
 
     return DashboardReport(
         total_balance_eur=round(total_balance_eur, 2),
@@ -62,17 +66,21 @@ async def get_dashboard_report(
 @router.get("/net-worth", response_model=NetWorthReport)
 async def get_net_worth_report(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get net worth breakdown."""
     # Get accounts
-    accounts_result = db.table("accounts").select("*").eq("user_id", current_user.id).eq("is_active", True).execute()
+    accounts = await fetch_all(
+        db,
+        "SELECT * FROM accounts WHERE user_id = %s AND is_active",
+        [current_user.id],
+    )
 
     total_assets = 0
     total_liabilities = 0
     account_balances = []
 
-    for acc in accounts_result.data:
+    for acc in accounts:
         balance_eur = acc["current_balance"]
         if acc["currency_code"] != "EUR":
             try:
@@ -92,10 +100,12 @@ async def get_net_worth_report(
             total_assets += balance_eur
 
     # Get investments value
-    investments = db.table("investments").select("*").eq("user_id", current_user.id).execute()
+    investments = await fetch_all(
+        db, "SELECT * FROM investments WHERE user_id = %s", [current_user.id]
+    )
 
     investments_value = 0
-    for inv in investments.data:
+    for inv in investments:
         if inv.get("current_price") and inv.get("quantity", 0) > 0:
             value = inv["current_price"] * inv["quantity"]
             if inv["current_price_currency"] != "EUR":
@@ -121,25 +131,29 @@ async def get_net_worth_report(
 async def get_cash_flow_report(
     period: Optional[str] = Query(None, description="Period (YYYY-MM)"),
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get cash flow report for a period."""
     if period is None:
         period = get_current_period()
 
     # Get transactions with categories
-    transactions = db.table("transactions").select(
-        "amount_base_eur, category_id, categories!inner(name, type)"
-    ).eq("user_id", current_user.id).eq("accounting_period", period).execute()
+    transactions = await fetch_all(
+        db,
+        "SELECT t.amount_base_eur, t.category_id, c.name AS category_name, c.type AS category_type "
+        "FROM transactions t JOIN categories c ON c.id = t.category_id "
+        "WHERE t.user_id = %s AND t.accounting_period = %s",
+        [current_user.id, period],
+    )
 
     income = 0
     expenses = 0
     by_category = {}
 
-    for t in transactions.data:
-        cat_type = t["categories"]["type"] if t.get("categories") else None
+    for t in transactions:
+        cat_type = t["category_type"]
         cat_id = t["category_id"]
-        cat_name = t["categories"]["name"] if t.get("categories") else "Unknown"
+        cat_name = t["category_name"]
         amount = abs(t["amount_base_eur"])
 
         if cat_type == "income":

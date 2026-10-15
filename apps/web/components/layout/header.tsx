@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { LogOut, User, Bell, Plus } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { clearAuthToken } from '@/lib/auth';
+import { useCurrentUser } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,25 +15,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
-interface HeaderProps {
-  user?: {
-    email?: string;
-    displayName?: string;
-  };
-}
-
-export function Header({ user }: HeaderProps) {
+export function Header() {
   const router = useRouter();
-  const supabase = createClient();
+  const { data: user } = useCurrentUser();
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
+  const handleSignOut = () => {
+    clearAuthToken();
     router.push('/login');
     router.refresh();
   };
 
-  const initials = user?.displayName
-    ? user.displayName
+  const initials = user?.display_name
+    ? user.display_name
         .split(' ')
         .map((n) => n[0])
         .join('')
@@ -63,7 +57,7 @@ export function Header({ user }: HeaderProps) {
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">
-                  {user?.displayName || 'User'}
+                  {user?.display_name || 'User'}
                 </p>
                 <p className="text-xs leading-none text-muted-foreground">
                   {user?.email}

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-from supabase import Client
+from psycopg import AsyncConnection
+from app.db import execute, fetch_all, fetch_one, insert, update
 from app.dependencies import get_current_user, get_db, CurrentUser
 from app.models import Account, AccountCreate, AccountUpdate, AccountBalance
 from app.services.currency_service import get_exchange_rate
@@ -8,117 +9,96 @@ from app.services.currency_service import get_exchange_rate
 router = APIRouter()
 
 
+async def _balance_eur(acc: dict, db: AsyncConnection) -> float:
+    """Account balance converted to EUR (falls back to the raw balance if no rate)."""
+    if acc["currency_code"] == "EUR":
+        return acc["current_balance"]
+    try:
+        rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
+        return acc["current_balance"] * rate
+    except Exception:
+        return acc["current_balance"]
+
+
 @router.get("", response_model=List[Account])
 async def list_accounts(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """List all accounts for the current user."""
-    result = db.table("accounts").select("*").eq("user_id", current_user.id).order("sort_order").execute()
+    rows = await fetch_all(
+        db,
+        "SELECT * FROM accounts WHERE user_id = %s ORDER BY sort_order",
+        [current_user.id],
+    )
 
-    accounts = []
-    for acc in result.data:
-        # Calculate EUR equivalent if different currency
-        current_balance_eur = acc["current_balance"]
-        if acc["currency_code"] != "EUR":
-            try:
-                rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
-                current_balance_eur = acc["current_balance"] * rate
-            except Exception:
-                pass
-
-        accounts.append(Account(
-            **acc,
-            current_balance_eur=current_balance_eur,
-        ))
-
-    return accounts
+    return [Account(**acc, current_balance_eur=await _balance_eur(acc, db)) for acc in rows]
 
 
 @router.get("/balances", response_model=List[AccountBalance])
 async def get_account_balances(
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get all account balances with EUR equivalents."""
-    result = db.table("accounts").select("*").eq("user_id", current_user.id).eq("is_active", True).order("sort_order").execute()
+    rows = await fetch_all(
+        db,
+        "SELECT * FROM accounts WHERE user_id = %s AND is_active ORDER BY sort_order",
+        [current_user.id],
+    )
 
-    balances = []
-    for acc in result.data:
-        current_balance_eur = acc["current_balance"]
-        if acc["currency_code"] != "EUR":
-            try:
-                rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
-                current_balance_eur = acc["current_balance"] * rate
-            except Exception:
-                pass
-
-        balances.append(AccountBalance(
+    return [
+        AccountBalance(
             **acc,
-            current_balance_eur=current_balance_eur,
+            current_balance_eur=await _balance_eur(acc, db),
             pending_transactions=0,
-        ))
-
-    return balances
+        )
+        for acc in rows
+    ]
 
 
 @router.get("/{account_id}", response_model=Account)
 async def get_account(
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Get a specific account."""
-    result = db.table("accounts").select("*").eq("id", account_id).eq("user_id", current_user.id).execute()
+    acc = await fetch_one(
+        db,
+        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
+        [account_id, current_user.id],
+    )
 
-    if not result.data:
+    if not acc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    acc = result.data[0]
-    current_balance_eur = acc["current_balance"]
-    if acc["currency_code"] != "EUR":
-        try:
-            rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
-            current_balance_eur = acc["current_balance"] * rate
-        except Exception:
-            pass
-
-    return Account(**acc, current_balance_eur=current_balance_eur)
+    return Account(**acc, current_balance_eur=await _balance_eur(acc, db))
 
 
 @router.post("", response_model=Account, status_code=status.HTTP_201_CREATED)
 async def create_account(
     account: AccountCreate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Create a new account."""
-    data = {
-        "user_id": current_user.id,
-        "name": account.name,
-        "type": account.type,
-        "currency_code": account.currency_code,
-        "initial_balance": account.initial_balance,
-        "current_balance": account.initial_balance,
-        "icon": account.icon,
-        "color": account.color,
-    }
+    acc = await insert(
+        db,
+        "accounts",
+        {
+            "user_id": current_user.id,
+            "name": account.name,
+            "type": account.type,
+            "currency_code": account.currency_code,
+            "initial_balance": account.initial_balance,
+            "current_balance": account.initial_balance,
+            "icon": account.icon,
+            "color": account.color,
+        },
+    )
 
-    result = db.table("accounts").insert(data).execute()
-
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create account")
-
-    acc = result.data[0]
-    current_balance_eur = acc["current_balance"]
-    if acc["currency_code"] != "EUR":
-        try:
-            rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
-            current_balance_eur = acc["current_balance"] * rate
-        except Exception:
-            pass
-
-    return Account(**acc, current_balance_eur=current_balance_eur)
+    return Account(**acc, current_balance_eur=await _balance_eur(acc, db))
 
 
 @router.patch("/{account_id}", response_model=Account)
@@ -126,53 +106,44 @@ async def update_account(
     account_id: str,
     account: AccountUpdate,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Update an account."""
-    # Verify ownership
-    existing = db.table("accounts").select("id").eq("id", account_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
-
     update_data = account.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
-    result = db.table("accounts").update(update_data).eq("id", account_id).execute()
+    acc = await update(
+        db, "accounts", update_data, {"id": account_id, "user_id": current_user.id}
+    )
+    if not acc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to update account")
-
-    acc = result.data[0]
-    current_balance_eur = acc["current_balance"]
-    if acc["currency_code"] != "EUR":
-        try:
-            rate = await get_exchange_rate(acc["currency_code"], "EUR", db=db)
-            current_balance_eur = acc["current_balance"] * rate
-        except Exception:
-            pass
-
-    return Account(**acc, current_balance_eur=current_balance_eur)
+    return Account(**acc, current_balance_eur=await _balance_eur(acc, db))
 
 
 @router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     account_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    db: Client = Depends(get_db),
+    db: AsyncConnection = Depends(get_db),
 ):
     """Delete an account."""
-    # Verify ownership
-    existing = db.table("accounts").select("id").eq("id", account_id).eq("user_id", current_user.id).execute()
-    if not existing.data:
+    existing = await fetch_one(
+        db,
+        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
+        [account_id, current_user.id],
+    )
+    if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    # Check for transactions
-    transactions = db.table("transactions").select("id").eq("account_id", account_id).limit(1).execute()
-    if transactions.data:
+    has_transactions = await fetch_one(
+        db, "SELECT 1 FROM transactions WHERE account_id = %s LIMIT 1", [account_id]
+    )
+    if has_transactions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete account with transactions. Delete transactions first or mark account as inactive.",
         )
 
-    db.table("accounts").delete().eq("id", account_id).execute()
+    await execute(db, "DELETE FROM accounts WHERE id = %s", [account_id])

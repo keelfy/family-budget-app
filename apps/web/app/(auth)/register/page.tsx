@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { PiggyBank } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { login, register } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -44,7 +44,6 @@ export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const supabase = createClient();
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -59,35 +58,17 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterFormValues) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            display_name: data.displayName,
-          },
-        },
-      });
+      await register(data.email, data.password, data.displayName);
+      await login(data.email, data.password);
 
-      if (error) {
-        toast({
-          variant: 'destructive',
-          title: 'Registration failed',
-          description: error.message,
-        });
-        return;
-      }
-
-      toast({
-        title: 'Account created',
-        description: 'Please check your email to verify your account',
-      });
-      router.push('/login');
+      router.push('/dashboard');
+      router.refresh();
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'An unexpected error occurred',
+        title: 'Registration failed',
+        description:
+          error instanceof Error ? error.message : 'An unexpected error occurred',
       });
     } finally {
       setIsLoading(false);

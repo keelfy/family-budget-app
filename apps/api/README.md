@@ -1,21 +1,29 @@
 # Nomad Ledger — API Reference
 
-FastAPI backend for Nomad Ledger. All endpoints require JWT authentication via Supabase Auth.
+FastAPI backend for Nomad Ledger. All endpoints except `POST /api/v1/auth/register` require HTTP Basic authentication.
 
 **Base URL:** `http://localhost:8000`
 **Interactive docs:** `http://localhost:8000/docs`
 
 ## Authentication
 
-All endpoints require a Bearer token in the `Authorization` header:
+All endpoints (except registration) require HTTP Basic credentials in the `Authorization` header:
 
 ```
-Authorization: Bearer <supabase-access-token>
+Authorization: Basic base64(<email>:<password>)
 ```
 
-The token is a Supabase JWT obtained after user login. The API verifies it using Supabase JWKS with the ES256 algorithm. The authenticated user's `id`, `email`, and `role` are extracted and injected via the `get_current_user` dependency.
+Passwords are stored as bcrypt hashes in the `users` table. The authenticated user's `id`, `email`, and `role` are injected via the `get_current_user` dependency. Use HTTPS in production: the password is sent with every request.
 
-All database queries are scoped to the authenticated user via `user_id` filtering and Supabase RLS policies.
+All database queries are scoped to the authenticated user via `user_id` filtering.
+
+### Auth endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/auth/register` | Create an account. Body: `{ "email", "password" (min 6), "display_name"? }`. `409` if the email exists. |
+| `GET` | `/api/v1/auth/me` | Return the authenticated user. Use it to validate credentials. |
+| `POST` | `/api/v1/auth/change-password` | Body: `{ "current_password", "new_password" }`. `204` on success. |
 
 ---
 
@@ -720,7 +728,7 @@ All errors return JSON:
 | Status | Meaning |
 |--------|---------|
 | `400` | Bad request — validation error or business rule violation |
-| `401` | Unauthorized — missing or invalid JWT |
+| `401` | Unauthorized — missing or invalid credentials |
 | `404` | Not found — resource doesn't exist or isn't owned by user |
 | `500` | Internal server error |
 
@@ -739,8 +747,6 @@ uvicorn app.main:app --reload --port 8000
 
 Environment variables (`.env`):
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-JWT_SECRET=your-jwt-secret
+DATABASE_URL=postgresql://nomad:nomad@localhost:5432/nomad_ledger
+CORS_ORIGINS=http://localhost:3000
 ```

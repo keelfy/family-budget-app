@@ -10,40 +10,43 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { createClient } from '@/lib/supabase/client';
+import { authApi } from '@/lib/api';
+import { clearAuthToken, encodeCredentials, setAuthToken } from '@/lib/auth';
+import { useCurrentUser } from '@/hooks/use-auth';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createClient();
+  const { data: user } = useCurrentUser();
   const [isLoading, setIsLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const { theme, setTheme } = useTheme();
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setIsLoading(true);
-    await supabase.auth.signOut();
+    clearAuthToken();
     router.push('/login');
     router.refresh();
   };
 
-  const handlePasswordReset = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.email) {
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email);
-      if (error) {
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: error.message,
-        });
-      } else {
-        toast({
-          title: 'Password reset email sent',
-          description: 'Check your inbox for the reset link',
-        });
-      }
+  const handlePasswordChange = async () => {
+    if (!user) return;
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      // The password is the API credential: keep the session on the new one.
+      setAuthToken(encodeCredentials(user.email, newPassword));
+      setCurrentPassword('');
+      setNewPassword('');
+      toast({ title: 'Password changed' });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Could not change password',
+      });
     }
   };
 
@@ -64,11 +67,11 @@ export default function SettingsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Display Name</Label>
-                <Input placeholder="Your name" />
+                <Input placeholder="Your name" defaultValue={user?.display_name ?? ''} key={user?.id} />
               </div>
               <div className="space-y-2">
                 <Label>Email</Label>
-                <Input type="email" disabled placeholder="email@example.com" />
+                <Input type="email" disabled placeholder="email@example.com" value={user?.email ?? ''} />
               </div>
             </div>
             <Button>Update Profile</Button>
@@ -84,15 +87,39 @@ export default function SettingsPage() {
             <CardDescription>Manage your account security</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
               <div>
                 <p className="font-medium">Password</p>
                 <p className="text-sm text-muted-foreground">
-                  Change your password via email
+                  Change your password
                 </p>
               </div>
-              <Button variant="outline" onClick={handlePasswordReset}>
-                Reset Password
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Current Password</Label>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>New Password</Label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handlePasswordChange}
+                disabled={!currentPassword || newPassword.length < 6}
+              >
+                Change Password
               </Button>
             </div>
             <Separator />
