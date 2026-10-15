@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -36,6 +37,7 @@ const accountSchema = z.object({
   type: z.enum(['checking', 'savings', 'investment', 'credit', 'cash']),
   currency_code: z.string().min(3, 'Currency is required'),
   initial_balance: z.coerce.number(),
+  current_balance: z.coerce.number(),
   color: z.string().optional(),
 });
 
@@ -68,6 +70,7 @@ export function AccountDialog({ open, onOpenChange, account }: AccountDialogProp
       type: 'checking',
       currency_code: 'EUR',
       initial_balance: 0,
+      current_balance: 0,
       color: '#3b82f6',
     },
   });
@@ -79,6 +82,7 @@ export function AccountDialog({ open, onOpenChange, account }: AccountDialogProp
         type: account.type,
         currency_code: account.currency_code,
         initial_balance: account.initial_balance,
+        current_balance: account.current_balance,
         color: account.color || '#3b82f6',
       });
     } else {
@@ -87,6 +91,7 @@ export function AccountDialog({ open, onOpenChange, account }: AccountDialogProp
         type: 'checking',
         currency_code: 'EUR',
         initial_balance: 0,
+        current_balance: 0,
         color: '#3b82f6',
       });
     }
@@ -102,6 +107,9 @@ export function AccountDialog({ open, onOpenChange, account }: AccountDialogProp
             type: data.type,
             currency_code: data.currency_code,
             color: data.color,
+            ...(data.current_balance !== account.current_balance && {
+              current_balance: data.current_balance,
+            }),
           },
         });
         toast({ title: 'Account updated successfully' });
@@ -188,7 +196,25 @@ export function AccountDialog({ open, onOpenChange, account }: AccountDialogProp
                 </FormItem>
               )}
             />
-            {!account && (
+            {account ? (
+              <FormField
+                control={form.control}
+                name="current_balance"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Current Balance</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Set it to correct a miscount or an unrecorded expense; no transaction is
+                      created.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
               <FormField
                 control={form.control}
                 name="initial_balance"

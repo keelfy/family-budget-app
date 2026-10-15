@@ -291,6 +291,7 @@ export interface UpdateAccountInput {
   icon?: string;
   color?: string;
   sort_order?: number;
+  current_balance?: number;
 }
 
 export interface TransactionItem {

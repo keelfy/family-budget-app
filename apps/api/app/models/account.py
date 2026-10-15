@@ -26,6 +26,8 @@ class AccountUpdate(BaseModel):
     icon: Optional[str] = None
     color: Optional[str] = None
     sort_order: Optional[int] = None
+    # Manual correction; later transactions adjust the balance relative to it.
+    current_balance: Optional[float] = None
 
 
 class Account(AccountBase):

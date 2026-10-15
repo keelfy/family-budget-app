@@ -66,6 +66,7 @@ export function StatementImportDialog({
   const account = accounts?.find((a) => a.id === accountId);
   const chosen = rows.filter((r) => r.selected);
   const missingCategory = chosen.filter((r) => !r.categoryId).length;
+  const duplicates = rows.filter((r) => r.duplicate).length;
 
   const close = () => {
     setRows([]);
@@ -232,7 +233,16 @@ export function StatementImportDialog({
               </TableHeader>
               <TableBody>
                 {rows.map((row, i) => (
-                  <TableRow key={i} className={row.selected ? '' : 'opacity-60'}>
+                  <TableRow
+                    key={i}
+                    className={
+                      row.duplicate
+                        ? 'bg-yellow-100/70 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/30'
+                        : row.selected
+                          ? ''
+                          : 'opacity-60'
+                    }
+                  >
                     <TableCell>
                       <Checkbox
                         checked={row.selected}
@@ -243,8 +253,11 @@ export function StatementImportDialog({
                     <TableCell>
                       {row.description}
                       {row.duplicate && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          already imported
+                        <Badge
+                          variant="outline"
+                          className="ml-2 border-yellow-500 text-xs text-yellow-700 dark:text-yellow-400"
+                        >
+                          duplicate
                         </Badge>
                       )}
                     </TableCell>
@@ -281,7 +294,8 @@ export function StatementImportDialog({
               <span className="text-sm text-muted-foreground">
                 {missingCategory > 0
                   ? `${missingCategory} selected without a category`
-                  : `${chosen.length} of ${rows.length} selected`}
+                  : `${chosen.length} of ${rows.length} selected` +
+                    (duplicates > 0 ? `, ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (yellow)` : '')}
               </span>
               <Button
                 disabled={chosen.length === 0 || missingCategory > 0 || importing}
