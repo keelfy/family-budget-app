@@ -26,8 +26,8 @@ async def get_dashboard_report(
     # Get total balance across all accounts
     accounts = await fetch_all(
         db,
-        "SELECT * FROM accounts WHERE user_id = %s AND is_active",
-        [current_user.id],
+        "SELECT * FROM accounts WHERE family_id = %s AND is_active",
+        [current_user.family_id],
     )
 
     total_balance_eur = 0
@@ -46,9 +46,9 @@ async def get_dashboard_report(
         db,
         "SELECT c.type, SUM(v.amount_eur) AS total "
         "FROM transaction_category_amounts v JOIN categories c ON c.id = v.category_id "
-        "WHERE v.user_id = %s AND v.accounting_period = %s "
+        "WHERE v.family_id = %s AND v.accounting_period = %s "
         "GROUP BY c.type",
-        [current_user.id, period],
+        [current_user.family_id, period],
     )
     by_type = {row["type"]: row["total"] for row in totals}
 
@@ -72,8 +72,8 @@ async def get_net_worth_report(
     # Get accounts
     accounts = await fetch_all(
         db,
-        "SELECT * FROM accounts WHERE user_id = %s AND is_active",
-        [current_user.id],
+        "SELECT * FROM accounts WHERE family_id = %s AND is_active",
+        [current_user.family_id],
     )
 
     total_assets = 0
@@ -101,7 +101,7 @@ async def get_net_worth_report(
 
     # Get investments value
     investments = await fetch_all(
-        db, "SELECT * FROM investments WHERE user_id = %s", [current_user.id]
+        db, "SELECT * FROM investments WHERE family_id = %s", [current_user.family_id]
     )
 
     investments_value = 0
@@ -142,8 +142,8 @@ async def get_cash_flow_report(
         db,
         "SELECT v.amount_eur, v.category_id, c.name AS category_name, c.type AS category_type "
         "FROM transaction_category_amounts v JOIN categories c ON c.id = v.category_id "
-        "WHERE v.user_id = %s AND v.accounting_period = %s",
-        [current_user.id, period],
+        "WHERE v.family_id = %s AND v.accounting_period = %s",
+        [current_user.family_id, period],
     )
 
     income = 0

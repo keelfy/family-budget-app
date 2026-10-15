@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
-import { User, Bell, Shield, Palette, Sun, Moon, Monitor } from 'lucide-react';
+import { User, Users, Bell, Shield, Palette, Sun, Moon, Monitor, Copy } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { authApi } from '@/lib/api';
 import { clearAuthToken, encodeCredentials, setAuthToken } from '@/lib/auth';
 import { useCurrentUser } from '@/hooks/use-auth';
+import { useCreateFamilyInvite, useFamilyMembers } from '@/hooks/use-family';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +21,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { data: user } = useCurrentUser();
+  const { data: members } = useFamilyMembers();
+  const createInvite = useCreateFamilyInvite();
   const [isLoading, setIsLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -30,6 +33,23 @@ export default function SettingsPage() {
     clearAuthToken();
     router.push('/login');
     router.refresh();
+  };
+
+  const handleCreateInvite = async () => {
+    try {
+      const invite = await createInvite.mutateAsync();
+      await navigator.clipboard?.writeText(invite.code);
+      toast({
+        title: `Invite code: ${invite.code}`,
+        description: 'Copied. Valid for 7 days, works once.',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Could not create invite',
+      });
+    }
   };
 
   const handlePasswordChange = async () => {
@@ -75,6 +95,45 @@ export default function SettingsPage() {
               </div>
             </div>
             <Button>Update Profile</Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Family
+            </CardTitle>
+            <CardDescription>
+              Everyone here shares accounts, transactions and budgets. Each member has their own allowance.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ul className="divide-y rounded-md border">
+              {members?.map((member) => (
+                <li key={member.id} className="flex items-center justify-between px-4 py-3">
+                  <span className="font-medium">
+                    {member.display_name || member.email}
+                    {member.id === user?.id && (
+                      <span className="ml-2 text-sm font-normal text-muted-foreground">(you)</span>
+                    )}
+                  </span>
+                  <span className="text-sm text-muted-foreground">{member.email}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Invite a member</p>
+                <p className="text-sm text-muted-foreground">
+                  They enter the code when creating their account
+                </p>
+              </div>
+              <Button variant="outline" onClick={handleCreateInvite} disabled={createInvite.isPending}>
+                <Copy className="mr-2 h-4 w-4" />
+                Create Invite Code
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -185,7 +244,7 @@ export default function SettingsPage() {
               <div>
                 <p className="font-medium">Default Monthly Allowance</p>
                 <p className="text-sm text-muted-foreground">
-                  Personal spending limit per month
+                  Starting limit for each new family member
                 </p>
               </div>
               <span className="font-mono">150.00 EUR</span>

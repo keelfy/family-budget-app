@@ -64,19 +64,19 @@ def _reject_transfer_items(category_type: str) -> None:
 
 async def _check_item_categories(
     db: AsyncConnection,
-    user_id: str,
+    family_id: str,
     category_ids: List[Optional[str]],
     category_type: str,
 ) -> None:
-    """Item categories must be visible to the user and share the transaction's type."""
+    """Item categories must be visible to the family and share the transaction's type."""
     ids = sorted({cid for cid in category_ids if cid})
     if not ids:
         return
     rows = await fetch_all(
         db,
         "SELECT id, type FROM categories "
-        "WHERE id = ANY(%s::uuid[]) AND (user_id IS NULL OR user_id = %s)",
-        [ids, user_id],
+        "WHERE id = ANY(%s::uuid[]) AND (family_id IS NULL OR family_id = %s)",
+        [ids, family_id],
     )
     if len(rows) != len(ids):
         raise HTTPException(
@@ -128,8 +128,8 @@ async def list_transactions(
     db: AsyncConnection = Depends(get_db),
 ):
     """List transactions with optional filters."""
-    conditions = ["t.user_id = %s"]
-    params: list = [current_user.id]
+    conditions = ["t.family_id = %s"]
+    params: list = [current_user.family_id]
 
     for column, value in (
         ("accounting_period", period),
@@ -167,8 +167,8 @@ async def preview_statement_import(
 
     account = await fetch_one(
         db,
-        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
-        [body.account_id, current_user.id],
+        "SELECT id FROM accounts WHERE id = %s AND family_id = %s",
+        [body.account_id, current_user.family_id],
     )
     if not account:
         raise HTTPException(
@@ -186,9 +186,9 @@ async def preview_statement_import(
         "SELECT DISTINCT ON (c.type, lower(t.merchant)) c.type::text AS type, "
         "lower(t.merchant) AS merchant, t.category_id "
         "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND c.type::text = ANY(%s) AND lower(t.merchant) = ANY(%s) "
+        "WHERE t.family_id = %s AND c.type::text = ANY(%s) AND lower(t.merchant) = ANY(%s) "
         "ORDER BY c.type, lower(t.merchant), t.transaction_date DESC, t.created_at DESC",
-        [current_user.id, types, list({m for _, m in keys})],
+        [current_user.family_id, types, list({m for _, m in keys})],
     )
     known = {(h["type"], h["merchant"]): h["category_id"] for h in history}
 
@@ -200,9 +200,9 @@ async def preview_statement_import(
         categories = await fetch_all(
             db,
             "SELECT id, name FROM categories "
-            "WHERE type = %s AND (user_id IS NULL OR user_id = %s) "
+            "WHERE type = %s AND (family_id IS NULL OR family_id = %s) "
             "ORDER BY sort_order, name",
-            [row_type, current_user.id],
+            [row_type, current_user.family_id],
         )
         picks = await categorize_items(
             "bank card statement", unknown, [c["name"] for c in categories]
@@ -218,10 +218,10 @@ async def preview_statement_import(
         "SELECT c.type::text AS type, t.transaction_date, abs(t.amount_original) AS amount, "
         "lower(t.merchant) AS merchant, COUNT(*)::int AS n "
         "FROM transactions t JOIN categories c ON c.id = t.category_id "
-        "WHERE t.user_id = %s AND t.account_id = %s "
+        "WHERE t.family_id = %s AND t.account_id = %s "
         "AND t.transaction_date BETWEEN %s AND %s GROUP BY 1, 2, 3, 4",
         [
-            current_user.id,
+            current_user.family_id,
             body.account_id,
             min(r.transaction_date for r in body.rows),
             max(r.transaction_date for r in body.rows),
@@ -253,8 +253,8 @@ async def get_transaction(
     """Get a specific transaction."""
     row = await fetch_one(
         db,
-        f"{_TRANSACTION_SELECT} WHERE t.id = %s AND t.user_id = %s",
-        [transaction_id, current_user.id],
+        f"{_TRANSACTION_SELECT} WHERE t.id = %s AND t.family_id = %s",
+        [transaction_id, current_user.family_id],
     )
 
     if not row:
@@ -287,8 +287,8 @@ async def create_transaction(
     # Verify account ownership
     account = await fetch_one(
         db,
-        "SELECT id, currency_code FROM accounts WHERE id = %s AND user_id = %s",
-        [transaction.account_id, current_user.id],
+        "SELECT id, currency_code FROM accounts WHERE id = %s AND family_id = %s",
+        [transaction.account_id, current_user.family_id],
     )
     if not account:
         raise HTTPException(
@@ -298,8 +298,8 @@ async def create_transaction(
     # Verify category is visible to the user
     category = await fetch_one(
         db,
-        "SELECT id, type FROM categories WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
-        [transaction.category_id, current_user.id],
+        "SELECT id, type FROM categories WHERE id = %s AND (family_id IS NULL OR family_id = %s)",
+        [transaction.category_id, current_user.family_id],
     )
     if not category:
         raise HTTPException(
@@ -310,8 +310,8 @@ async def create_transaction(
     if transaction.allowance_id:
         allowance_check = await fetch_one(
             db,
-            "SELECT id FROM allowances WHERE id = %s AND user_id = %s",
-            [transaction.allowance_id, current_user.id],
+            "SELECT id FROM allowances WHERE id = %s AND family_id = %s",
+            [transaction.allowance_id, current_user.family_id],
         )
         if not allowance_check:
             raise HTTPException(
@@ -322,8 +322,8 @@ async def create_transaction(
     if transaction.annual_budget_id:
         ab_check = await fetch_one(
             db,
-            "SELECT id FROM annual_budgets WHERE id = %s AND user_id = %s",
-            [transaction.annual_budget_id, current_user.id],
+            "SELECT id FROM annual_budgets WHERE id = %s AND family_id = %s",
+            [transaction.annual_budget_id, current_user.family_id],
         )
         if not ab_check:
             raise HTTPException(
@@ -335,7 +335,7 @@ async def create_transaction(
         _check_items_total(transaction.items, transaction.amount_original)
         await _check_item_categories(
             db,
-            current_user.id,
+            current_user.family_id,
             [item.category_id for item in transaction.items],
             category["type"],
         )
@@ -361,6 +361,7 @@ async def create_transaction(
             "transactions",
             {
                 "user_id": current_user.id,
+            "family_id": current_user.family_id,
                 "account_id": transaction.account_id,
                 "category_id": transaction.category_id,
                 "amount_original": transaction.amount_original,
@@ -394,8 +395,8 @@ async def update_transaction(
     # Verify ownership
     existing = await fetch_one(
         db,
-        "SELECT * FROM transactions WHERE id = %s AND user_id = %s",
-        [transaction_id, current_user.id],
+        "SELECT * FROM transactions WHERE id = %s AND family_id = %s",
+        [transaction_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(
@@ -412,8 +413,8 @@ async def update_transaction(
     if update_data.get("allowance_id") is not None:
         allowance_check = await fetch_one(
             db,
-            "SELECT id FROM allowances WHERE id = %s AND user_id = %s",
-            [update_data["allowance_id"], current_user.id],
+            "SELECT id FROM allowances WHERE id = %s AND family_id = %s",
+            [update_data["allowance_id"], current_user.family_id],
         )
         if not allowance_check:
             raise HTTPException(
@@ -424,8 +425,8 @@ async def update_transaction(
     if update_data.get("annual_budget_id") is not None:
         ab_check = await fetch_one(
             db,
-            "SELECT id FROM annual_budgets WHERE id = %s AND user_id = %s",
-            [update_data["annual_budget_id"], current_user.id],
+            "SELECT id FROM annual_budgets WHERE id = %s AND family_id = %s",
+            [update_data["annual_budget_id"], current_user.family_id],
         )
         if not ab_check:
             raise HTTPException(
@@ -464,7 +465,7 @@ async def update_transaction(
                 )
             ]
         await _check_item_categories(
-            db, current_user.id, item_category_ids, category_type
+            db, current_user.family_id, item_category_ids, category_type
         )
     if items:
         if "amount_original" in update_data:
@@ -513,8 +514,8 @@ async def delete_transaction(
     """Delete a transaction."""
     existing = await fetch_one(
         db,
-        "SELECT id FROM transactions WHERE id = %s AND user_id = %s",
-        [transaction_id, current_user.id],
+        "SELECT id FROM transactions WHERE id = %s AND family_id = %s",
+        [transaction_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(
@@ -536,13 +537,13 @@ async def create_transfer(
     # Verify both accounts exist and belong to user
     from_account = await fetch_one(
         db,
-        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
-        [transfer.from_account_id, current_user.id],
+        "SELECT * FROM accounts WHERE id = %s AND family_id = %s",
+        [transfer.from_account_id, current_user.family_id],
     )
     to_account = await fetch_one(
         db,
-        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
-        [transfer.to_account_id, current_user.id],
+        "SELECT * FROM accounts WHERE id = %s AND family_id = %s",
+        [transfer.to_account_id, current_user.family_id],
     )
 
     if not from_account:
@@ -615,6 +616,7 @@ async def create_transfer(
             "transactions",
             {
                 "user_id": current_user.id,
+            "family_id": current_user.family_id,
                 "account_id": transfer.from_account_id,
                 "category_id": category_id,
                 "amount_original": -abs(transfer.amount),
@@ -636,6 +638,7 @@ async def create_transfer(
             "transactions",
             {
                 "user_id": current_user.id,
+            "family_id": current_user.family_id,
                 "account_id": transfer.to_account_id,
                 "category_id": category_id,
                 "amount_original": abs(to_amount),

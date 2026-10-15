@@ -27,9 +27,9 @@ async def parse_receipt(
     categories = await fetch_all(
         db,
         "SELECT id, name FROM categories "
-        "WHERE type = 'expense' AND (user_id IS NULL OR user_id = %s) "
+        "WHERE type = 'expense' AND (family_id IS NULL OR family_id = %s) "
         "ORDER BY sort_order, name",
-        [current_user.id],
+        [current_user.family_id],
     )
     picks = await categorize_items(
         receipt.merchant,

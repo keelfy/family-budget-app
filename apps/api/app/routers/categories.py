@@ -16,8 +16,8 @@ async def list_categories(
     """List all categories (system + user's custom)."""
     rows = await fetch_all(
         db,
-        "SELECT * FROM categories WHERE user_id IS NULL OR user_id = %s ORDER BY type, sort_order",
-        [current_user.id],
+        "SELECT * FROM categories WHERE family_id IS NULL OR family_id = %s ORDER BY type, sort_order",
+        [current_user.family_id],
     )
 
     return [Category(**cat) for cat in rows]
@@ -32,8 +32,8 @@ async def get_category(
     """Get a specific category."""
     row = await fetch_one(
         db,
-        "SELECT * FROM categories WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
-        [category_id, current_user.id],
+        "SELECT * FROM categories WHERE id = %s AND (family_id IS NULL OR family_id = %s)",
+        [category_id, current_user.family_id],
     )
 
     if not row:
@@ -54,6 +54,7 @@ async def create_category(
         "categories",
         {
             "user_id": current_user.id,
+            "family_id": current_user.family_id,
             "name": category.name,
             "type": category.type,
             "parent_id": category.parent_id,
@@ -77,8 +78,8 @@ async def update_category(
     """Update a category (only user's custom categories)."""
     existing = await fetch_one(
         db,
-        "SELECT is_system FROM categories WHERE id = %s AND user_id = %s",
-        [category_id, current_user.id],
+        "SELECT is_system FROM categories WHERE id = %s AND family_id = %s",
+        [category_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found or cannot be modified")
@@ -104,8 +105,8 @@ async def delete_category(
     """Delete a category (only user's custom categories)."""
     existing = await fetch_one(
         db,
-        "SELECT is_system FROM categories WHERE id = %s AND user_id = %s",
-        [category_id, current_user.id],
+        "SELECT is_system FROM categories WHERE id = %s AND family_id = %s",
+        [category_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found or cannot be deleted")

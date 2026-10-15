@@ -35,7 +35,7 @@ export default function DashboardPage() {
       <div className="mt-6">
         <Card>
           <CardHeader>
-            <CardTitle>Personal Allowances</CardTitle>
+            <CardTitle>Family Allowances</CardTitle>
           </CardHeader>
           <CardContent>
             <AllowanceStatus />

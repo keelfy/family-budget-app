@@ -11,10 +11,16 @@ security = HTTPBasic(auto_error=False)
 
 class CurrentUser:
     def __init__(
-        self, id: str, email: str, role: str = "user", display_name: str | None = None
+        self,
+        id: str,
+        email: str,
+        family_id: str,
+        role: str = "user",
+        display_name: str | None = None,
     ):
         self.id = id
         self.email = email
+        self.family_id = family_id
         self.role = role
         self.display_name = display_name
 
@@ -31,7 +37,7 @@ async def get_current_user(
 
     user = await fetch_one(
         db,
-        "SELECT id, email, password_hash, role, display_name FROM users WHERE email = %s",
+        "SELECT id, email, family_id, password_hash, role, display_name FROM users WHERE email = %s",
         [credentials.username.strip().lower()],
     )
     password_hash = user["password_hash"] if user else None
@@ -41,6 +47,7 @@ async def get_current_user(
     return CurrentUser(
         id=user["id"],
         email=user["email"],
+        family_id=user["family_id"],
         role=user["role"],
         display_name=user["display_name"],
     )

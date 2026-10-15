@@ -28,8 +28,8 @@ async def list_accounts(
     """List all accounts for the current user."""
     rows = await fetch_all(
         db,
-        "SELECT * FROM accounts WHERE user_id = %s ORDER BY sort_order",
-        [current_user.id],
+        "SELECT * FROM accounts WHERE family_id = %s ORDER BY sort_order",
+        [current_user.family_id],
     )
 
     return [Account(**acc, current_balance_eur=await _balance_eur(acc, db)) for acc in rows]
@@ -43,8 +43,8 @@ async def get_account_balances(
     """Get all account balances with EUR equivalents."""
     rows = await fetch_all(
         db,
-        "SELECT * FROM accounts WHERE user_id = %s AND is_active ORDER BY sort_order",
-        [current_user.id],
+        "SELECT * FROM accounts WHERE family_id = %s AND is_active ORDER BY sort_order",
+        [current_user.family_id],
     )
 
     return [
@@ -66,8 +66,8 @@ async def get_account(
     """Get a specific account."""
     acc = await fetch_one(
         db,
-        "SELECT * FROM accounts WHERE id = %s AND user_id = %s",
-        [account_id, current_user.id],
+        "SELECT * FROM accounts WHERE id = %s AND family_id = %s",
+        [account_id, current_user.family_id],
     )
 
     if not acc:
@@ -88,6 +88,7 @@ async def create_account(
         "accounts",
         {
             "user_id": current_user.id,
+            "family_id": current_user.family_id,
             "name": account.name,
             "type": account.type,
             "currency_code": account.currency_code,
@@ -114,7 +115,7 @@ async def update_account(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
 
     acc = await update(
-        db, "accounts", update_data, {"id": account_id, "user_id": current_user.id}
+        db, "accounts", update_data, {"id": account_id, "family_id": current_user.family_id}
     )
     if not acc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
@@ -131,8 +132,8 @@ async def delete_account(
     """Delete an account."""
     existing = await fetch_one(
         db,
-        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
-        [account_id, current_user.id],
+        "SELECT id FROM accounts WHERE id = %s AND family_id = %s",
+        [account_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")

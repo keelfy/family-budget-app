@@ -49,8 +49,8 @@ async def list_investments(
     """List all investments for the current user."""
     rows = await fetch_all(
         db,
-        f"{_INVESTMENT_SELECT} WHERE i.user_id = %s ORDER BY i.asset_name",
-        [current_user.id],
+        f"{_INVESTMENT_SELECT} WHERE i.family_id = %s ORDER BY i.asset_name",
+        [current_user.family_id],
     )
 
     return [
@@ -67,8 +67,8 @@ async def get_investment(
     """Get a specific investment."""
     inv = await fetch_one(
         db,
-        f"{_INVESTMENT_SELECT} WHERE i.id = %s AND i.user_id = %s",
-        [investment_id, current_user.id],
+        f"{_INVESTMENT_SELECT} WHERE i.id = %s AND i.family_id = %s",
+        [investment_id, current_user.family_id],
     )
 
     if not inv:
@@ -87,8 +87,8 @@ async def create_investment(
     # Verify account ownership
     account = await fetch_one(
         db,
-        "SELECT id FROM accounts WHERE id = %s AND user_id = %s",
-        [investment.account_id, current_user.id],
+        "SELECT id FROM accounts WHERE id = %s AND family_id = %s",
+        [investment.account_id, current_user.family_id],
     )
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
@@ -98,6 +98,7 @@ async def create_investment(
         "investments",
         {
             "user_id": current_user.id,
+            "family_id": current_user.family_id,
             "account_id": investment.account_id,
             "asset_name": investment.asset_name,
             "ticker": investment.ticker,
@@ -119,8 +120,8 @@ async def buy_investment(
     # Verify ownership
     inv = await fetch_one(
         db,
-        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
-        [investment_id, current_user.id],
+        "SELECT * FROM investments WHERE id = %s AND family_id = %s",
+        [investment_id, current_user.family_id],
     )
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
@@ -176,8 +177,8 @@ async def sell_investment(
     # Verify ownership
     inv = await fetch_one(
         db,
-        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
-        [investment_id, current_user.id],
+        "SELECT * FROM investments WHERE id = %s AND family_id = %s",
+        [investment_id, current_user.family_id],
     )
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")
@@ -237,8 +238,8 @@ async def record_dividend(
     # Verify ownership
     inv = await fetch_one(
         db,
-        "SELECT * FROM investments WHERE id = %s AND user_id = %s",
-        [investment_id, current_user.id],
+        "SELECT * FROM investments WHERE id = %s AND family_id = %s",
+        [investment_id, current_user.family_id],
     )
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investment not found")

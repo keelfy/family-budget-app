@@ -1,17 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
 
-class AllowanceCreate(BaseModel):
-    name: str
-    monthly_limit: float = 150
-
-
 class AllowanceUpdate(BaseModel):
-    name: Optional[str] = None
-    monthly_limit: Optional[float] = None
-    is_active: Optional[bool] = None
+    monthly_limit: float = Field(ge=0)
 
 
 class AllowanceDefinition(BaseModel):

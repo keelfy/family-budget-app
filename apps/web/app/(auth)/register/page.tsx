@@ -21,6 +21,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -33,6 +34,7 @@ const registerSchema = z.object({
   email: z.string().email('Please enter a valid email'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
+  inviteCode: z.string().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ['confirmPassword'],
@@ -52,13 +54,14 @@ export default function RegisterPage() {
       email: '',
       password: '',
       confirmPassword: '',
+      inviteCode: '',
     },
   });
 
   const onSubmit = async (data: RegisterFormValues) => {
     setIsLoading(true);
     try {
-      await register(data.email, data.password, data.displayName);
+      await register(data.email, data.password, data.displayName, data.inviteCode);
       await login(data.email, data.password);
 
       router.push('/dashboard');
@@ -142,6 +145,22 @@ export default function RegisterPage() {
                     <FormControl>
                       <Input type="password" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="inviteCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Family invite code (optional)</FormLabel>
+                    <FormControl>
+                      <Input autoComplete="off" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Have a code from a family member? Enter it to join their family.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

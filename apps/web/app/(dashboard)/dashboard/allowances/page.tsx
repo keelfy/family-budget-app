@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CreditCard, Plus, RefreshCw, Pencil, Trash2, MoreHorizontal, Calculator } from 'lucide-react';
+import { CreditCard, RefreshCw, Pencil, MoreHorizontal, Calculator } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,8 +26,8 @@ import {
   useAllowanceBalances,
   useAllowanceRollover,
   useRecalculateAllowanceBalance,
-  useDeleteAllowance,
 } from '@/hooks/use-allowances';
+import { useCurrentUser } from '@/hooks/use-auth';
 import { AllowanceDialog } from '@/components/forms/allowance-dialog';
 import { formatCurrency, getPercentage, getCurrentPeriod, formatPeriod } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
@@ -39,7 +39,7 @@ export default function AllowancesPage() {
   const { data: allowances } = useAllowances();
   const { data: balances, isLoading } = useAllowanceBalances({ period });
   const rollover = useAllowanceRollover();
-  const deleteAllowance = useDeleteAllowance();
+  const { data: currentUser } = useCurrentUser();
   const recalculate = useRecalculateAllowanceBalance();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -89,19 +89,6 @@ export default function AllowancesPage() {
     }
   };
 
-  const handleDelete = async (allowanceId: string) => {
-    try {
-      await deleteAllowance.mutateAsync(allowanceId);
-      toast({ title: 'Allowance deleted' });
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Delete failed',
-        description: error.message,
-      });
-    }
-  };
-
   const handleDialogClose = (open: boolean) => {
     setDialogOpen(open);
     if (!open) {
@@ -112,17 +99,13 @@ export default function AllowancesPage() {
   return (
     <div>
       <PageHeader
-        title="Personal Allowances"
-        description={`Allowance tracking for ${formatPeriod(period)}`}
+        title="Family Allowances"
+        description={`Each family member's spending allowance for ${formatPeriod(period)}`}
       >
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleRollover} disabled={rollover.isPending}>
             <RefreshCw className={`mr-2 h-4 w-4 ${rollover.isPending ? 'animate-spin' : ''}`} />
             Month Rollover
-          </Button>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Allowance
           </Button>
         </div>
       </PageHeader>
@@ -151,8 +134,8 @@ export default function AllowancesPage() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <ul className="list-disc list-inside space-y-1">
-            <li>Create named allowances (e.g. "Dad's Fun Money", "Vacation Fund")</li>
-            <li>Each allowance has a monthly spending limit</li>
+            <li>Every family member has their own allowance, created when they join</li>
+            <li>Any family member can change a monthly spending limit</li>
             <li>Unspent amounts carry over to the next month</li>
             <li>Assign transactions to an allowance to track against its limit</li>
             <li>Run "Month Rollover" to create or re-calculate carry-overs for the current month</li>
@@ -182,7 +165,7 @@ export default function AllowancesPage() {
             </p>
             {isCurrentPeriod ? (
               <p className="text-sm text-muted-foreground">
-                Create an allowance and run a rollover, or assign a transaction to an allowance
+                Run a rollover to start this month, or assign a transaction to an allowance
               </p>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -203,7 +186,12 @@ export default function AllowancesPage() {
               <Card key={balance.id}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">{balance.allowance_name || 'Allowance'}</h3>
+                    <h3 className="text-lg font-semibold">
+                      {balance.allowance_name || 'Allowance'}
+                      {balance.user_id === currentUser?.id && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">(you)</span>
+                      )}
+                    </h3>
                     <div className="flex items-center gap-2">
                       <Badge variant={isOverLimit ? 'destructive' : remaining < 30 ? 'warning' : 'secondary'}>
                         {isOverLimit
@@ -223,14 +211,7 @@ export default function AllowancesPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(balance.allowance_id)}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(balance.allowance_id)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
+                            Edit limit
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

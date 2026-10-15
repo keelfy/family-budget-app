@@ -15,15 +15,26 @@ Authorization: Basic base64(<email>:<password>)
 
 Passwords are stored as bcrypt hashes in the `users` table. The authenticated user's `id`, `email`, and `role` are injected via the `get_current_user` dependency. Use HTTPS in production: the password is sent with every request.
 
-All database queries are scoped to the authenticated user via `user_id` filtering.
+All database queries are scoped to the authenticated user's family via `family_id` filtering. `user_id` on a row records its author (for allowances: the member it belongs to).
 
 ### Auth endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/auth/register` | Create an account. Body: `{ "email", "password" (min 6), "display_name"? }`. `409` if the email exists. |
+| `POST` | `/api/v1/auth/register` | Create an account and its allowance. Body: `{ "email", "password" (min 6), "display_name"?, "invite_code"? }`. Without `invite_code` a new family is created; with it the user joins that family (`400` if invalid, expired or used). `409` if the email exists. |
 | `GET` | `/api/v1/auth/me` | Return the authenticated user. Use it to validate credentials. |
 | `POST` | `/api/v1/auth/change-password` | Body: `{ "current_password", "new_password" }`. `204` on success. |
+
+---
+
+## Family
+
+Prefix: `/api/v1/family`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/members` | Everyone in the family: `{ id, email, display_name, allowance_id }[]`. |
+| `POST` | `/invites` | Create a single-use invite code valid for 7 days: `{ code, expires_at }`. `201`. |
 
 ---
 
@@ -326,7 +337,7 @@ Prefix: `/api/v1/allowances`
 ### Definitions (CRUD)
 
 ### `GET /`
-List all allowance definitions for the current user.
+List the family's allowances (one per member, created when the member registers).
 
 **Response:** `AllowanceDefinition[]`
 
@@ -335,42 +346,17 @@ Get a single allowance definition.
 
 **Response:** `AllowanceDefinition`
 
-### `POST /`
-Create a new named allowance. Also creates an initial balance row for the current period with `spent_amount = 0`.
+### `PATCH /{allowance_id}`
+Set a member's monthly limit. Any family member may do this. The current month's balance row is updated immediately.
 
 **Request body:**
 ```json
 {
-  "name": "Dad's Fun Money",
-  "monthly_limit": 150.00
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Allowance name |
-| `monthly_limit` | number | No | Monthly limit (defaults to 0) |
-
-**Response:** `AllowanceDefinition` (201 Created)
-
-### `PATCH /{allowance_id}`
-Update an allowance definition.
-
-**Request body (all fields optional):**
-```json
-{
-  "name": "Updated Name",
-  "monthly_limit": 200.00,
-  "is_active": false
+  "monthly_limit": 200.00
 }
 ```
 
 **Response:** `AllowanceDefinition`
-
-### `DELETE /{allowance_id}`
-Delete an allowance. Fails if transactions are linked — unassign them first.
-
-**Response:** 204 No Content
 
 ### Balances & Operations
 

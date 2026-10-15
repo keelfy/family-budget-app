@@ -28,8 +28,8 @@ async def list_annual_budgets(
     db: AsyncConnection = Depends(get_db),
 ):
     """List annual budgets with calculated spent amounts."""
-    conditions = ["b.user_id = %s"]
-    params: list = [current_user.id]
+    conditions = ["b.family_id = %s"]
+    params: list = [current_user.family_id]
     if year:
         conditions.append("b.year = %s")
         params.append(year)
@@ -55,6 +55,7 @@ async def create_annual_budget(
         "annual_budgets",
         {
             "user_id": current_user.id,
+            "family_id": current_user.family_id,
             "name": budget.name,
             "year": budget.year,
             "amount_planned": budget.amount_planned,
@@ -73,8 +74,8 @@ async def get_annual_budget(
     """Get a single annual budget with calculated spent amount."""
     row = await fetch_one(
         db,
-        f"{_ANNUAL_BUDGET_SELECT} WHERE b.id = %s AND b.user_id = %s",
-        [budget_id, current_user.id],
+        f"{_ANNUAL_BUDGET_SELECT} WHERE b.id = %s AND b.family_id = %s",
+        [budget_id, current_user.family_id],
     )
 
     if not row:
@@ -103,7 +104,7 @@ async def update_annual_budget(
         db,
         "annual_budgets",
         update_data,
-        {"id": budget_id, "user_id": current_user.id},
+        {"id": budget_id, "family_id": current_user.family_id},
     )
     if not updated:
         raise HTTPException(
@@ -122,8 +123,8 @@ async def delete_annual_budget(
     """Delete an annual budget. Checks for linked transactions first."""
     existing = await fetch_one(
         db,
-        "SELECT id FROM annual_budgets WHERE id = %s AND user_id = %s",
-        [budget_id, current_user.id],
+        "SELECT id FROM annual_budgets WHERE id = %s AND family_id = %s",
+        [budget_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(

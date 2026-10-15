@@ -7,6 +7,7 @@ import * as z from 'zod';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -20,12 +21,11 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { useCreateAllowance, useUpdateAllowance } from '@/hooks/use-allowances';
+import { useUpdateAllowance } from '@/hooks/use-allowances';
 import { useToast } from '@/components/ui/use-toast';
 import { AllowanceDefinition } from '@/lib/api';
 
 const allowanceSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
   monthly_limit: z.coerce.number().min(0, 'Monthly limit must be 0 or greater'),
 });
 
@@ -34,51 +34,32 @@ type AllowanceFormValues = z.infer<typeof allowanceSchema>;
 interface AllowanceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  allowance?: AllowanceDefinition | null;
+  allowance: AllowanceDefinition | null;
 }
 
 export function AllowanceDialog({ open, onOpenChange, allowance }: AllowanceDialogProps) {
   const { toast } = useToast();
-  const createAllowance = useCreateAllowance();
   const updateAllowance = useUpdateAllowance();
 
   const form = useForm<AllowanceFormValues>({
     resolver: zodResolver(allowanceSchema),
-    defaultValues: {
-      name: '',
-      monthly_limit: 150,
-    },
+    defaultValues: { monthly_limit: 150 },
   });
 
   useEffect(() => {
     if (allowance) {
-      form.reset({
-        name: allowance.name,
-        monthly_limit: allowance.monthly_limit,
-      });
-    } else {
-      form.reset({
-        name: '',
-        monthly_limit: 150,
-      });
+      form.reset({ monthly_limit: allowance.monthly_limit });
     }
   }, [allowance, form]);
 
   const onSubmit = async (data: AllowanceFormValues) => {
+    if (!allowance) return;
     try {
-      if (allowance) {
-        await updateAllowance.mutateAsync({
-          id: allowance.id,
-          data: {
-            name: data.name,
-            monthly_limit: data.monthly_limit,
-          },
-        });
-        toast({ title: 'Allowance updated successfully' });
-      } else {
-        await createAllowance.mutateAsync(data);
-        toast({ title: 'Allowance created successfully' });
-      }
+      await updateAllowance.mutateAsync({
+        id: allowance.id,
+        data: { monthly_limit: data.monthly_limit },
+      });
+      toast({ title: 'Allowance updated successfully' });
       onOpenChange(false);
     } catch (error: any) {
       toast({
@@ -93,23 +74,11 @@ export function AllowanceDialog({ open, onOpenChange, allowance }: AllowanceDial
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{allowance ? 'Edit Allowance' : 'Add Allowance'}</DialogTitle>
+          <DialogTitle>Edit Allowance</DialogTitle>
+          <DialogDescription>{allowance?.name}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. Dad's Fun Money" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <FormField
               control={form.control}
               name="monthly_limit"
@@ -127,8 +96,8 @@ export function AllowanceDialog({ open, onOpenChange, allowance }: AllowanceDial
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createAllowance.isPending || updateAllowance.isPending}>
-                {allowance ? 'Update' : 'Create'}
+              <Button type="submit" disabled={updateAllowance.isPending}>
+                Update
               </Button>
             </div>
           </form>

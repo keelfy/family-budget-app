@@ -1,6 +1,6 @@
 # Nomad Ledger
 
-Personal finance web application with multi-currency support, monthly & annual budgeting, named personal allowances, and investment tracking.
+Personal finance web application with multi-currency support, monthly & annual budgeting, family accounts with a personal allowance per member, and investment tracking.
 
 ## Features
 
@@ -9,7 +9,7 @@ Personal finance web application with multi-currency support, monthly & annual b
 - **Transaction Tracking** — Record income, expenses, and account-to-account transfers with category classification
 - **Monthly Budgets** — Set per-category monthly budgets and compare planned vs actual spending
 - **Annual Budgets** — Create yearly budgets (e.g. "Trips", "Concerts") and assign individual transactions to them
-- **Personal Allowances** — Named allowances with monthly limits and automatic carry-over of unspent amounts
+- **Family Accounts** — Members share accounts, transactions and budgets; each member has their own allowance with a monthly limit and automatic carry-over of unspent amounts. Members join with a single-use invite code
 - **Investment Portfolio** — Track stocks, ETFs, crypto, and bonds with buy/sell/dividend operations and P&L calculations
 - **Dashboard & Reports** — Net worth, cash flow, and budget status at a glance
 - **Dark Mode** — Light, dark, and system theme support
@@ -43,7 +43,7 @@ nomad-ledger/
 │   │   │           ├── transactions/         # Transaction list + new/edit
 │   │   │           ├── budgets/              # Monthly budgets
 │   │   │           ├── annual-budgets/       # Annual budgets
-│   │   │           ├── allowances/           # Personal allowances
+│   │   │           ├── allowances/           # Family allowances
 │   │   │           ├── investments/          # Investment portfolio
 │   │   │           └── settings/             # User settings
 │   │   ├── components/
@@ -158,7 +158,9 @@ npm run dev:api    # http://localhost:8000
 | `categories` | Transaction categories with parent/child hierarchy + system defaults |
 | `transactions` | All financial transactions with multi-currency amounts |
 | `budgets` | Monthly per-category budget targets |
-| `allowances` | Named allowance definitions with monthly limits |
+| `families` | Family groups; every user belongs to one, shared data is scoped by `family_id` |
+| `family_invites` | Single-use, expiring codes for joining a family at registration |
+| `allowances` | One allowance per family member with a monthly limit |
 | `allowance_balances` | Per-period allowance tracking (limit + carry-over + spent) |
 | `annual_budgets` | Yearly named budgets (e.g. "Trips 2026") |
 | `investments` | Investment positions (stocks, ETFs, crypto, bonds) |
@@ -210,11 +212,11 @@ All monetary amounts are stored in their original currency and converted to EUR 
 
 When creating a transaction in a non-EUR currency, the API automatically fetches and applies the exchange rate for the transaction date. Users can also override the rate manually.
 
-## Personal Allowances
+## Family Allowances
 
-Named personal spending envelopes (e.g. "Dad's Fun Money", "Mom's Fun Money"):
+Each family member has one personal spending allowance, created when they register:
 
-- Each allowance has a configurable monthly spending limit
+- Any family member can change any member's monthly spending limit (applies to the current month immediately)
 - Assign transactions to an allowance to count against its limit
 - Unspent amounts carry over to the next month automatically
 - **Month Rollover** creates/recalculates current-period balance records with carry-over from the previous period

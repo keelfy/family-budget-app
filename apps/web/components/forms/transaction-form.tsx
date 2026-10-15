@@ -28,6 +28,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useCategories } from '@/hooks/use-categories';
 import { useAllowances } from '@/hooks/use-allowances';
+import { useCurrentUser } from '@/hooks/use-auth';
 import { useAnnualBudgets } from '@/hooks/use-annual-budgets';
 import { useCreateTransaction, useUpdateTransaction } from '@/hooks/use-transactions';
 import { useToast } from '@/components/ui/use-toast';
@@ -89,6 +90,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
   const { data: allowances } = useAllowances();
+  const { data: currentUser } = useCurrentUser();
   const { data: annualBudgets } = useAnnualBudgets();
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
@@ -463,7 +465,8 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
                       checked={isChecked}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          field.onChange(activeAllowances[0]?.id || null);
+                          const own = activeAllowances.find((a) => a.user_id === currentUser?.id);
+                          field.onChange((own ?? activeAllowances[0])?.id || null);
                         } else {
                           field.onChange(null);
                         }
@@ -471,9 +474,9 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
                     />
                   </FormControl>
                   <div className="space-y-1 leading-none">
-                    <FormLabel>Personal Allowance</FormLabel>
+                    <FormLabel>Allowance</FormLabel>
                     <FormDescription>
-                      Count this against a personal spending allowance
+                      Count this against a family member's spending allowance
                     </FormDescription>
                   </div>
                 </div>
@@ -498,7 +501,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
                 )}
                 {isChecked && activeAllowances.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No allowances created yet. Create one in the Allowances page.
+                    No allowances available yet.
                   </p>
                 )}
                 <FormMessage />

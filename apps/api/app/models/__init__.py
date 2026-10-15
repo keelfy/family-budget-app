@@ -32,7 +32,6 @@ from app.models.budget import (
     BudgetCopy,
 )
 from app.models.allowance import (
-    AllowanceCreate,
     AllowanceUpdate,
     AllowanceDefinition,
     AllowanceBalance,
@@ -53,6 +52,8 @@ from app.models.exchange_rate import (
     ExchangeRateCreate,
 )
 from app.models.user import (
+    FamilyInvite,
+    FamilyMember,
     User,
     UserRegister,
     PasswordChange,
@@ -87,7 +88,6 @@ __all__ = [
     "BudgetUpdate",
     "BudgetComparison",
     "BudgetCopy",
-    "AllowanceCreate",
     "AllowanceUpdate",
     "AllowanceDefinition",
     "AllowanceBalance",
@@ -103,6 +103,8 @@ __all__ = [
     "DashboardReport",
     "NetWorthReport",
     "CashFlowReport",
+    "FamilyInvite",
+    "FamilyMember",
     "User",
     "UserRegister",
     "PasswordChange",

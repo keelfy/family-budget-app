@@ -51,9 +51,27 @@ export interface CurrentUser {
   id: string;
   email: string;
   display_name: string | null;
+  family_id: string;
   role: string;
   created_at: string;
 }
+
+export interface FamilyMember {
+  id: string;
+  email: string;
+  display_name: string | null;
+  allowance_id: string | null;
+}
+
+export interface FamilyInvite {
+  code: string;
+  expires_at: string;
+}
+
+export const familyApi = {
+  members: () => api<FamilyMember[]>('/api/v1/family/members'),
+  createInvite: () => api<FamilyInvite>('/api/v1/family/invites', { method: 'POST' }),
+};
 
 export const authApi = {
   me: () => api<CurrentUser>('/api/v1/auth/me'),
@@ -84,12 +102,18 @@ export async function login(email: string, password: string): Promise<void> {
 export async function register(
   email: string,
   password: string,
-  displayName: string
+  displayName: string,
+  inviteCode?: string
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, display_name: displayName }),
+    body: JSON.stringify({
+      email,
+      password,
+      display_name: displayName,
+      invite_code: inviteCode || undefined,
+    }),
   });
 
   if (!response.ok) {
@@ -195,9 +219,7 @@ export const budgetsApi = {
 export const allowancesApi = {
   list: () => api<AllowanceDefinition[]>('/api/v1/allowances'),
   get: (id: string) => api<AllowanceDefinition>(`/api/v1/allowances/${id}`),
-  create: (data: CreateAllowanceInput) => api<AllowanceDefinition>('/api/v1/allowances', { method: 'POST', body: data }),
   update: (id: string, data: UpdateAllowanceInput) => api<AllowanceDefinition>(`/api/v1/allowances/${id}`, { method: 'PATCH', body: data }),
-  delete: (id: string) => api<void>(`/api/v1/allowances/${id}`, { method: 'DELETE' }),
   balances: (params?: { period?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.period) searchParams.set('period', params.period);
@@ -456,15 +478,8 @@ export interface AllowanceDefinition {
   updated_at: string;
 }
 
-export interface CreateAllowanceInput {
-  name: string;
-  monthly_limit?: number;
-}
-
 export interface UpdateAllowanceInput {
-  name?: string;
-  monthly_limit?: number;
-  is_active?: boolean;
+  monthly_limit: number;
 }
 
 export interface AllowanceBalance {

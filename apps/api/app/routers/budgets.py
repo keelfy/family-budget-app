@@ -13,7 +13,7 @@ _BUDGET_SELECT = """
            COALESCE((
                SELECT SUM(v.amount_eur)
                FROM transaction_category_amounts v
-               WHERE v.user_id = b.user_id
+               WHERE v.family_id = b.family_id
                  AND v.category_id = b.category_id
                  AND v.accounting_period = b.period
            ), 0) AS spent_amount
@@ -29,8 +29,8 @@ async def list_budgets(
     db: AsyncConnection = Depends(get_db),
 ):
     """List all budgets for the current user."""
-    conditions = ["b.user_id = %s"]
-    params: list = [current_user.id]
+    conditions = ["b.family_id = %s"]
+    params: list = [current_user.family_id]
     if period:
         conditions.append("b.period = %s")
         params.append(period)
@@ -67,11 +67,11 @@ async def get_budget_comparison(
     return comparisons
 
 
-async def _get_budget(budget_id: str, user_id: str, db: AsyncConnection) -> Budget:
+async def _get_budget(budget_id: str, family_id: str, db: AsyncConnection) -> Budget:
     row = await fetch_one(
         db,
-        f"{_BUDGET_SELECT} WHERE b.id = %s AND b.user_id = %s",
-        [budget_id, user_id],
+        f"{_BUDGET_SELECT} WHERE b.id = %s AND b.family_id = %s",
+        [budget_id, family_id],
     )
     return Budget(**row)
 
@@ -86,8 +86,8 @@ async def create_budget(
     # Verify category is visible to the user
     category = await fetch_one(
         db,
-        "SELECT id FROM categories WHERE id = %s AND (user_id IS NULL OR user_id = %s)",
-        [budget.category_id, current_user.id],
+        "SELECT id FROM categories WHERE id = %s AND (family_id IS NULL OR family_id = %s)",
+        [budget.category_id, current_user.family_id],
     )
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -95,8 +95,8 @@ async def create_budget(
     # Check for existing budget
     existing = await fetch_one(
         db,
-        "SELECT id FROM budgets WHERE user_id = %s AND category_id = %s AND period = %s",
-        [current_user.id, budget.category_id, budget.period],
+        "SELECT id FROM budgets WHERE family_id = %s AND category_id = %s AND period = %s",
+        [current_user.family_id, budget.category_id, budget.period],
     )
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Budget already exists for this category and period")
@@ -106,13 +106,14 @@ async def create_budget(
         "budgets",
         {
             "user_id": current_user.id,
+            "family_id": current_user.family_id,
             "category_id": budget.category_id,
             "period": budget.period,
             "amount_planned": budget.amount_planned,
         },
     )
 
-    return await _get_budget(created["id"], current_user.id, db)
+    return await _get_budget(created["id"], current_user.family_id, db)
 
 
 @router.patch("/{budget_id}", response_model=Budget)
@@ -127,12 +128,12 @@ async def update_budget(
         db,
         "budgets",
         {"amount_planned": budget.amount_planned},
-        {"id": budget_id, "user_id": current_user.id},
+        {"id": budget_id, "family_id": current_user.family_id},
     )
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
 
-    return await _get_budget(budget_id, current_user.id, db)
+    return await _get_budget(budget_id, current_user.family_id, db)
 
 
 @router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -144,8 +145,8 @@ async def delete_budget(
     """Delete a budget."""
     existing = await fetch_one(
         db,
-        "SELECT id FROM budgets WHERE id = %s AND user_id = %s",
-        [budget_id, current_user.id],
+        "SELECT id FROM budgets WHERE id = %s AND family_id = %s",
+        [budget_id, current_user.family_id],
     )
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
@@ -162,8 +163,8 @@ async def copy_budgets(
     """Copy budgets from one period to another."""
     source_budgets = await fetch_all(
         db,
-        "SELECT category_id, amount_planned FROM budgets WHERE user_id = %s AND period = %s",
-        [current_user.id, copy_data.from_period],
+        "SELECT category_id, amount_planned FROM budgets WHERE family_id = %s AND period = %s",
+        [current_user.family_id, copy_data.from_period],
     )
 
     if not source_budgets:
@@ -172,11 +173,11 @@ async def copy_budgets(
     # Skip categories that already have a budget in the target period
     await execute(
         db,
-        "INSERT INTO budgets (user_id, category_id, period, amount_planned) "
-        "SELECT user_id, category_id, %s, amount_planned FROM budgets "
-        "WHERE user_id = %s AND period = %s "
-        "ON CONFLICT (user_id, category_id, period) DO NOTHING",
-        [copy_data.to_period, current_user.id, copy_data.from_period],
+        "INSERT INTO budgets (user_id, family_id, category_id, period, amount_planned) "
+        "SELECT %s, family_id, category_id, %s, amount_planned FROM budgets "
+        "WHERE family_id = %s AND period = %s "
+        "ON CONFLICT (family_id, category_id, period) DO NOTHING",
+        [current_user.id, copy_data.to_period, current_user.family_id, copy_data.from_period],
     )
 
     return await list_budgets(copy_data.to_period, current_user, db)
