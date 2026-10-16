@@ -31,6 +31,7 @@ class TransactionBase(BaseModel):
     notes: Optional[str] = None
     allowance_id: Optional[str] = None
     annual_budget_id: Optional[str] = None
+    tracked_item_id: Optional[str] = None
 
 
 class TransactionCreate(TransactionBase):
@@ -49,6 +50,7 @@ class TransactionUpdate(BaseModel):
     notes: Optional[str] = None
     allowance_id: Optional[str] = None
     annual_budget_id: Optional[str] = None
+    tracked_item_id: Optional[str] = None
     exchange_rate: Optional[float] = None
     # Omitted: keep existing lines. Provided: replace them ([] clears).
     items: Optional[List[TransactionItemIn]] = None
@@ -62,6 +64,7 @@ class Transaction(TransactionBase):
     category_type: Optional[CategoryType] = None
     allowance_name: Optional[str] = None
     annual_budget_name: Optional[str] = None
+    tracked_item_name: Optional[str] = None
     amount_base_eur: float
     exchange_rate: float
     exchange_rate_source: str

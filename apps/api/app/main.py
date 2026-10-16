@@ -15,6 +15,7 @@ from app.routers import (
     budgets,
     allowances,
     annual_budgets,
+    tracked_items,
     family,
     investments,
     exchange_rates,
@@ -76,6 +77,7 @@ app.include_router(budgets.router, prefix="/api/v1/budgets", tags=["Budgets"])
 app.include_router(family.router, prefix="/api/v1/family", tags=["Family"])
 app.include_router(allowances.router, prefix="/api/v1/allowances", tags=["Allowances"])
 app.include_router(annual_budgets.router, prefix="/api/v1/annual-budgets", tags=["Annual Budgets"])
+app.include_router(tracked_items.router, prefix="/api/v1/tracked-items", tags=["Tracked Items"])
 app.include_router(investments.router, prefix="/api/v1/investments", tags=["Investments"])
 app.include_router(exchange_rates.router, prefix="/api/v1/exchange-rates", tags=["Exchange Rates"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])

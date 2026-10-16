@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TRACKED_KINDS } from '@/lib/tracking';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -39,6 +40,7 @@ const navigation = [
   { name: 'Budgets', href: '/dashboard/budgets', icon: Target },
   { name: 'Annual Budgets', href: '/dashboard/annual-budgets', icon: Calendar },
   { name: 'Allowances', href: '/dashboard/allowances', icon: CreditCard },
+  ...Object.values(TRACKED_KINDS).map(({ label, href, icon }) => ({ name: label, href, icon })),
   { name: 'Investments', href: '/dashboard/investments', icon: TrendingUp },
 ];
 

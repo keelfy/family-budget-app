@@ -193,6 +193,9 @@ export default function TransactionsPage() {
                         {transaction.annual_budget_name && (
                           <Badge variant="secondary" className="text-xs">{transaction.annual_budget_name}</Badge>
                         )}
+                        {transaction.tracked_item_name && (
+                          <Badge variant="secondary" className="text-xs">{transaction.tracked_item_name}</Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{transaction.category_name}</TableCell>

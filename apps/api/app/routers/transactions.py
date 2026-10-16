@@ -27,6 +27,7 @@ _TRANSACTION_SELECT = """
            c.type AS category_type,
            al.name AS allowance_name,
            ab.name AS annual_budget_name,
+           ti_link.name AS tracked_item_name,
            (SELECT COUNT(*) FROM transaction_items ti
             WHERE ti.transaction_id = t.id)::int AS items_count
     FROM transactions t
@@ -34,12 +35,26 @@ _TRANSACTION_SELECT = """
     JOIN categories c ON c.id = t.category_id
     LEFT JOIN allowances al ON al.id = t.allowance_id
     LEFT JOIN annual_budgets ab ON ab.id = t.annual_budget_id
+    LEFT JOIN tracked_items ti_link ON ti_link.id = t.tracked_item_id
 """
 
 
 def get_accounting_period(transaction_date: date) -> str:
     """Get accounting period from date (YYYY-MM format)."""
     return transaction_date.strftime("%Y-%m")
+
+
+async def _check_tracked_item(
+    db: AsyncConnection, item_id: Optional[str], family_id: str
+) -> None:
+    if item_id and not await fetch_one(
+        db,
+        "SELECT id FROM tracked_items WHERE id = %s AND family_id = %s",
+        [item_id, family_id],
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tracked item not found"
+        )
 
 
 def _items_total(items: List[TransactionItemIn]) -> float:
@@ -122,6 +137,9 @@ async def list_transactions(
     annual_budget_id: Optional[str] = Query(
         None, description="Filter by annual budget"
     ),
+    tracked_item_id: Optional[str] = Query(
+        None, description="Filter by tracked item (e.g. a subscription)"
+    ),
     search: Optional[str] = Query(
         None, description="Case-insensitive text match on description or merchant"
     ),
@@ -140,6 +158,7 @@ async def list_transactions(
         ("category_id", category_id),
         ("allowance_id", allowance_id),
         ("annual_budget_id", annual_budget_id),
+        ("tracked_item_id", tracked_item_id),
     ):
         if value:
             conditions.append(f"t.{column} = %s")
@@ -340,6 +359,8 @@ async def create_transaction(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
 
+    await _check_tracked_item(db, transaction.tracked_item_id, current_user.family_id)
+
     if transaction.items:
         _reject_transfer_items(category["type"])
         _check_items_total(transaction.items, transaction.amount_original)
@@ -386,6 +407,7 @@ async def create_transaction(
                 "notes": transaction.notes,
                 "allowance_id": transaction.allowance_id,
                 "annual_budget_id": transaction.annual_budget_id,
+                "tracked_item_id": transaction.tracked_item_id,
             },
         )
         if transaction.items:
@@ -442,6 +464,10 @@ async def update_transaction(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Annual budget not found"
             )
+
+    await _check_tracked_item(
+        db, update_data.get("tracked_item_id"), current_user.family_id
+    )
 
     # Receipt lines: they define the amount, so the two must stay in sync.
     items = update_data.pop("items", None)

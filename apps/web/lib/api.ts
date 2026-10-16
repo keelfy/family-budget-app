@@ -143,6 +143,7 @@ export const transactionsApi = {
     if (params?.category_id) searchParams.set('category_id', params.category_id);
     if (params?.allowance_id) searchParams.set('allowance_id', params.allowance_id);
     if (params?.annual_budget_id) searchParams.set('annual_budget_id', params.annual_budget_id);
+    if (params?.tracked_item_id) searchParams.set('tracked_item_id', params.tracked_item_id);
     if (params?.search) searchParams.set('search', params.search);
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     const query = searchParams.toString();
@@ -243,6 +244,20 @@ export const annualBudgetsApi = {
   create: (data: CreateAnnualBudgetInput) => api<AnnualBudget>('/api/v1/annual-budgets', { method: 'POST', body: data }),
   update: (id: string, data: UpdateAnnualBudgetInput) => api<AnnualBudget>(`/api/v1/annual-budgets/${id}`, { method: 'PATCH', body: data }),
   delete: (id: string) => api<void>(`/api/v1/annual-budgets/${id}`, { method: 'DELETE' }),
+};
+
+// Tracked Items API (recurring items rolled up into one budget per kind)
+export const trackedItemsApi = {
+  list: (params?: { kind?: TrackedKind; period?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.kind) searchParams.set('kind', params.kind);
+    if (params?.period) searchParams.set('period', params.period);
+    const query = searchParams.toString();
+    return api<TrackedItem[]>(`/api/v1/tracked-items${query ? `?${query}` : ''}`);
+  },
+  create: (data: CreateTrackedItemInput) => api<TrackedItem>('/api/v1/tracked-items', { method: 'POST', body: data }),
+  update: (id: string, data: UpdateTrackedItemInput) => api<TrackedItem>(`/api/v1/tracked-items/${id}`, { method: 'PATCH', body: data }),
+  delete: (id: string) => api<void>(`/api/v1/tracked-items/${id}`, { method: 'DELETE' }),
 };
 
 // Investment API
@@ -358,6 +373,8 @@ export interface Transaction {
   allowance_name?: string;
   annual_budget_id: string | null;
   annual_budget_name?: string;
+  tracked_item_id: string | null;
+  tracked_item_name?: string;
   transfer_to_account_id?: string;
   items_count: number;
   /** Only populated by the single-transaction endpoint. */
@@ -370,6 +387,7 @@ export interface TransactionFilters {
   category_id?: string;
   allowance_id?: string;
   annual_budget_id?: string;
+  tracked_item_id?: string;
   /** Matches description or merchant. */
   search?: string;
   limit?: number;
@@ -402,6 +420,7 @@ export interface UpdateTransactionInput {
   notes?: string;
   allowance_id?: string | null;
   annual_budget_id?: string | null;
+  tracked_item_id?: string | null;
   exchange_rate?: number;
   /** Omit to keep existing items; [] clears them. */
   items?: TransactionItemInput[];
@@ -519,6 +538,44 @@ export interface CreateAnnualBudgetInput {
 export interface UpdateAnnualBudgetInput {
   name?: string;
   amount_planned?: number;
+  is_active?: boolean;
+}
+
+export type TrackedKind = 'subscription';
+export type BillingCycle = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+
+export interface TrackedItem {
+  id: string;
+  user_id: string;
+  kind: TrackedKind;
+  name: string;
+  /** EUR per billing cycle. */
+  amount: number;
+  cycle: BillingCycle;
+  start_date: string;
+  is_active: boolean;
+  /** amount normalised to one month. */
+  monthly_cost: number;
+  next_charge_date: string;
+  /** Linked transactions in the requested period. */
+  spent_amount: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateTrackedItemInput {
+  kind: TrackedKind;
+  name: string;
+  amount: number;
+  cycle: BillingCycle;
+  start_date?: string;
+}
+
+export interface UpdateTrackedItemInput {
+  name?: string;
+  amount?: number;
+  cycle?: BillingCycle;
+  start_date?: string;
   is_active?: boolean;
 }
 

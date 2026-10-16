@@ -41,6 +41,11 @@ from app.models.annual_budget import (
     AnnualBudgetCreate,
     AnnualBudgetUpdate,
 )
+from app.models.tracked_item import (
+    TrackedItem,
+    TrackedItemCreate,
+    TrackedItemUpdate,
+)
 from app.models.investment import (
     Investment,
     InvestmentCreate,
@@ -94,6 +99,9 @@ __all__ = [
     "AnnualBudget",
     "AnnualBudgetCreate",
     "AnnualBudgetUpdate",
+    "TrackedItem",
+    "TrackedItemCreate",
+    "TrackedItemUpdate",
     "Investment",
     "InvestmentCreate",
     "InvestmentTransaction",

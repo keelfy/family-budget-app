@@ -20,7 +20,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -30,6 +32,8 @@ import { useCategories } from '@/hooks/use-categories';
 import { useAllowances } from '@/hooks/use-allowances';
 import { useCurrentUser } from '@/hooks/use-auth';
 import { useAnnualBudgets } from '@/hooks/use-annual-budgets';
+import { useTrackedItems } from '@/hooks/use-tracked-items';
+import { TRACKED_KINDS } from '@/lib/tracking';
 import { useCreateTransaction, useUpdateTransaction } from '@/hooks/use-transactions';
 import { useToast } from '@/components/ui/use-toast';
 import { getPeriodFromDate, formatDateLocal, parseLocalDate } from '@/lib/utils';
@@ -55,6 +59,7 @@ const transactionSchema = z
     notes: z.string().optional(),
     allowance_id: z.string().nullable().default(null),
     annual_budget_id: z.string().nullable().default(null),
+    tracked_item_id: z.string().nullable().default(null),
     items: z
       .array(
         z.object({
@@ -92,6 +97,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
   const { data: allowances } = useAllowances();
   const { data: currentUser } = useCurrentUser();
   const { data: annualBudgets } = useAnnualBudgets();
+  const { data: trackedItems } = useTrackedItems();
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
 
@@ -113,6 +119,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
           notes: transaction.notes || '',
           allowance_id: transaction.allowance_id || null,
           annual_budget_id: transaction.annual_budget_id || null,
+          tracked_item_id: transaction.tracked_item_id || null,
           items: (transaction.items ?? []).map(({ name, amount, category_id }) => ({
             name,
             amount,
@@ -131,6 +138,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
           notes: '',
           allowance_id: null,
           annual_budget_id: null,
+          tracked_item_id: null,
           items: [],
         },
   });
@@ -216,6 +224,7 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
             notes: data.notes,
             allowance_id: data.allowance_id,
             annual_budget_id: data.annual_budget_id,
+            tracked_item_id: data.tracked_item_id,
             items,
           },
         });
@@ -557,6 +566,70 @@ export function TransactionForm({ transaction, onSuccess, onCancel }: Transactio
                 {isChecked && activeAnnualBudgets.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     No annual budgets created yet. Create one in the Annual Budgets page.
+                  </p>
+                )}
+                <FormMessage />
+              </FormItem>
+            );
+          }}
+        />
+
+        <FormField
+          control={form.control}
+          name="tracked_item_id"
+          render={({ field }) => {
+            const isChecked = field.value !== null;
+            // An inactive item stays selectable while it is the one linked.
+            const selectable = (trackedItems ?? []).filter((i) => i.is_active || i.id === field.value);
+            const kinds = Object.entries(TRACKED_KINDS)
+              .map(([kind, config]) => ({
+                config,
+                items: selectable.filter((i) => i.kind === kind),
+              }))
+              .filter(({ items }) => items.length > 0);
+
+            return (
+              <FormItem className="rounded-md border p-4 space-y-3">
+                <div className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        field.onChange(checked ? selectable[0]?.id || null : null);
+                      }}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Recurring charge</FormLabel>
+                    <FormDescription>
+                      Count this toward a tracked {Object.values(TRACKED_KINDS).map((k) => k.noun).join(' or ')}
+                    </FormDescription>
+                  </div>
+                </div>
+                {isChecked && selectable.length > 0 && (
+                  <Select onValueChange={field.onChange} value={field.value || undefined}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select item" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {kinds.map(({ config, items }) => (
+                        <SelectGroup key={config.label}>
+                          <SelectLabel>{config.label}</SelectLabel>
+                          {items.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {isChecked && selectable.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nothing tracked yet. Add one from the sidebar, e.g. Subscriptions.
                   </p>
                 )}
                 <FormMessage />

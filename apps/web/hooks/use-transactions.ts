@@ -33,6 +33,7 @@ export function useCreateTransaction() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['allowances'] });
+      queryClient.invalidateQueries({ queryKey: ['tracked-items'] });
     },
   });
 }
@@ -48,6 +49,7 @@ export function useUpdateTransaction() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['allowances'] });
+      queryClient.invalidateQueries({ queryKey: ['tracked-items'] });
     },
   });
 }
@@ -62,6 +64,7 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['allowances'] });
+      queryClient.invalidateQueries({ queryKey: ['tracked-items'] });
     },
   });
 }
