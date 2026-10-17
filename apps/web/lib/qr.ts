@@ -1,28 +1,37 @@
 /**
- * Read a QR code from a photo or a PDF. jsQR and pdf.js are loaded on demand:
- * they are only needed once the user actually provides a file.
+ * Read a QR code from a photo or a PDF. zxing and pdf.js are loaded on demand:
+ * they are only needed once the user actually provides a file. (jsQR was dropped: it
+ * misses the dense, thermal-printed fiscal receipt codes that phone cameras read fine.)
  */
 const MAX_SIDES = [1600, 1000, 2400];
 const PDF_MAX_PAGES = 5;
 const PDF_TARGET_SIDE = 2000;
 
-type JsQR = (typeof import('jsqr'))['default'];
+type Reader = typeof import('zxing-wasm/reader');
 
 export function isPdf(file: File): boolean {
   return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 }
 
 export async function decodeQrFromFile(file: File): Promise<string | null> {
-  const { default: jsQR } = await import('jsqr');
-  return isPdf(file) ? decodeQrFromPdf(file, jsQR) : decodeQrFromImage(file, jsQR);
+  const reader = await loadReader();
+  return isPdf(file) ? decodeQrFromPdf(file, reader) : decodeQrFromImage(file, reader);
 }
 
-function scan(jsQR: JsQR, ctx: CanvasRenderingContext2D, width: number, height: number) {
+/** zxing-wasm with its wasm binary served from /public (the default is a CDN). */
+async function loadReader(): Promise<Reader> {
+  const reader = await import('zxing-wasm/reader');
+  reader.setZXingModuleOverrides({ locateFile: (path) => `/${path}` });
+  return reader;
+}
+
+async function scan(reader: Reader, ctx: CanvasRenderingContext2D, width: number, height: number) {
   const image = ctx.getImageData(0, 0, width, height);
-  return jsQR(image.data, width, height, { inversionAttempts: 'attemptBoth' })?.data ?? null;
+  const [result] = await reader.readBarcodes(image, { formats: ['QRCode'], tryHarder: true });
+  return result?.text || null;
 }
 
-async function decodeQrFromImage(file: File, jsQR: JsQR): Promise<string | null> {
+async function decodeQrFromImage(file: File, reader: Reader): Promise<string | null> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -35,7 +44,7 @@ async function decodeQrFromImage(file: File, jsQR: JsQR): Promise<string | null>
       canvas.width = Math.round(bitmap.width * scale);
       canvas.height = Math.round(bitmap.height * scale);
       ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const found = scan(jsQR, ctx, canvas.width, canvas.height);
+      const found = await scan(reader, ctx, canvas.width, canvas.height);
       if (found) return found;
     }
     return null;
@@ -44,14 +53,14 @@ async function decodeQrFromImage(file: File, jsQR: JsQR): Promise<string | null>
   }
 }
 
-/** pdf.js with its worker configured; loaded on demand like jsQR. */
+/** pdf.js with its worker configured; loaded on demand like zxing. */
 export async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
   return pdfjs;
 }
 
-async function decodeQrFromPdf(file: File, jsQR: JsQR): Promise<string | null> {
+async function decodeQrFromPdf(file: File, reader: Reader): Promise<string | null> {
   const pdfjs = await loadPdfjs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
   const canvas = document.createElement('canvas');
@@ -70,7 +79,7 @@ async function decodeQrFromPdf(file: File, jsQR: JsQR): Promise<string | null> {
       canvas.height = Math.round(viewport.height);
       // pdf.js paints the white page background itself; do not pre-fill (it stalls rendering).
       await page.render({ canvasContext: ctx, viewport }).promise;
-      const found = scan(jsQR, ctx, canvas.width, canvas.height);
+      const found = await scan(reader, ctx, canvas.width, canvas.height);
       if (found) return found;
     }
     return null;

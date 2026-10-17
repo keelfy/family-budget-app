@@ -9,6 +9,11 @@ fs.copyFileSync(
   require.resolve('pdfjs-dist/build/pdf.worker.min.js'),
   path.join(__dirname, 'public', 'pdf.worker.min.js')
 );
+// zxing's wasm binary is served from /public instead of its default CDN.
+fs.copyFileSync(
+  path.join(path.dirname(require.resolve('zxing-wasm/reader')), '..', '..', 'reader', 'zxing_reader.wasm'),
+  path.join(__dirname, 'public', 'zxing_reader.wasm')
+);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
